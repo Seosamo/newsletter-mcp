@@ -1,8 +1,8 @@
 # Chat Newsletter MCP
 
-채팅 기반 사용자 관심사를 받아 구조화된 뉴스레터 초안 JSON을 생성하는 MCP 서버입니다.
+채팅 기반 사용자 관심사를 받아 Markdown 형식의 뉴스레터를 생성하는 MCP 서버입니다.
 
-사용자 선호도 관리, 콘텐츠 수집·랭킹·중복 제거, 뉴스레터 템플릿 매핑, LLM 기반 최종 렌더링까지 전 과정을 처리합니다.
+사용자 선호도 관리, 콘텐츠 수집·랭킹·중복 제거, 뉴스레터 템플릿 매핑까지 전 과정을 처리합니다. 모든 툴 응답은 TextContent(Markdown) 형식으로 반환됩니다.
 
 ---
 
@@ -31,8 +31,8 @@ MCP 서버는 **툴(Tool)** 목록을 클라이언트에 노출하고, 클라이
 | `list_user_category_settings` | 사용자 관심 태그 설정 목록 조회 | ✓ |
 | `upsert_user_category_setting` | 관심 태그 메타데이터 생성/교체 | |
 | `list_newsletter_history` | 최근 생성된 뉴스레터 초안 이력 조회 | ✓ |
-| `generate_newsletter_draft` | 채팅 선호도 기반 구조화 초안 생성 | |
-| `generate_final_newsletter` | 초안 생성 후 LLM으로 최종 뉴스레터 렌더링 | |
+| `generate_newsletter_draft` | 채팅 선호도 기반 뉴스레터 생성 (Markdown 반환) | |
+| `generate_final_newsletter` | `generate_newsletter_draft`와 동일 동작, 추가 파라미터(`outputFormat`, `model`) 수용 | |
 
 > 채팅 파싱(관심사 추출 등)은 LLM 클라이언트 측에서 처리한 뒤 툴을 호출합니다.
 
@@ -86,17 +86,6 @@ Authorization: Bearer <token>
 X-MCP-Auth: <token>
 ```
 
-### 최종 뉴스레터 LLM 렌더링
-
-`generate_final_newsletter` 툴 사용 시 필요합니다.
-
-| 변수 | 설명 |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI API 키 (필수) |
-| `OPENAI_MODEL` | 사용할 모델 (선택, 기본: `gpt-5.5`) |
-| `OPENAI_BASE_URL` | API 베이스 URL (선택) |
-
-> `generate_newsletter_draft`는 OpenAI 키 없이 동작합니다.
 
 ---
 
@@ -115,7 +104,6 @@ npm test
 - 프로파일 기본값 폴백 (관심사·지역·톤·주간 기간)
 - 제외 키워드 필터링 및 중복 URL 제거
 - RSS 수집 실패 시 graceful 처리
-- LLM 프로바이더를 통한 최종 뉴스레터 렌더링
 - MCP 프로토콜 버전 유효성 검사
 - 툴 메타데이터 정책 준수 검사
 
@@ -205,21 +193,34 @@ https://your-public-domain.example/mcp
 
 ---
 
-## 최종 뉴스레터 생성 예시
+## 응답 형식
 
-`generate_final_newsletter` 요청 예시:
+모든 툴은 MCP `TextContent` 타입으로 Markdown 텍스트를 반환합니다.
 
-```json
-{
-  "userId": "default",
-  "userMessage": "이번 주 애니메이션/일본 뉴스레터 만들어줘",
-  "interests": ["애니메이션", "일본"],
-  "regions": ["일본"],
-  "outputFormat": "markdown"
-}
+`generate_newsletter_draft` / `generate_final_newsletter` 응답 예시:
+
+```markdown
+## 애니메이션/일본 뉴스레터 초안
+
+**Draft ID**: `draft_xxxx`
+**Period**: 2026-06-15 ~ 2026-06-22
+**Tone**: friendly | **Template**: `default_weekly`
+**Generated**: 2026-06-22T...
+
+---
+
+### 오늘 주요 소식
+
+1. **[기사 제목](https://...)** (score: 87)
+   기사 요약...
+   _출처명 · 2026-06-21_
+
+...
+
+### Sources
+
+- [출처명](https://...)
 ```
-
-응답에는 구조화된 `draft`와 LLM이 렌더링한 `newsletter.content`가 모두 포함됩니다.
 
 ---
 
