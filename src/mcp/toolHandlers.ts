@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
-import type { InterestTagSetting, NewsletterFormatPreference, UserProfile, UserSchedule } from "../domain/types.js";
-import { FinalNewsletterRenderer } from "../pipeline/finalNewsletterRenderer.js";
+import type { InterestTagSetting, NewsletterDraft, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 
@@ -162,7 +161,6 @@ export function listTools() {
 export async function callTool(
   storage: NewsletterStorage,
   generator: NewsletterDraftGenerator,
-  renderer: FinalNewsletterRenderer,
   name: string,
   args: unknown
 ): Promise<ToolResult> {
@@ -170,17 +168,20 @@ export async function callTool(
     case "get_user_profile": {
       const input = userIdSchema.parse(args);
       const profile = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
-      return jsonResult({ profile });
+      return textResult(formatProfile(profile));
     }
     case "update_user_preferences": {
       const input = updatePreferencesSchema.parse(args);
       const existing = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
       const profile = mergeProfile(existing, input.patch);
       await storage.saveProfile(profile);
-      return jsonResult({ profile, sourceMessage: input.sourceMessage });
+      const header = input.sourceMessage ? `_Based on: "${input.sourceMessage}"_\n\n` : "";
+      return textResult(`${header}${formatProfile(profile)}`);
     }
     case "list_newsletter_templates": {
-      return jsonResult({ templates: await storage.listTemplates() });
+      const templates = await storage.listTemplates();
+      const body = templates.map(formatTemplate).join("\n\n---\n\n");
+      return textResult(`## Newsletter Templates\n\n${body || "_No templates found._"}`);
     }
     case "get_newsletter_template": {
       const input = templateIdSchema.parse(args);
@@ -188,45 +189,146 @@ export async function callTool(
       if (!template) {
         throw new Error(`Newsletter template not found: ${input.templateId}`);
       }
-      return jsonResult({ template });
+      return textResult(formatTemplate(template));
     }
     case "list_user_category_settings": {
       const input = userIdSchema.parse(args);
-      return jsonResult({ settings: await storage.listUserCategorySettings(input.userId) });
+      const settings = await storage.listUserCategorySettings(input.userId);
+      const body = settings.map(formatCategorySetting).join("\n\n---\n\n");
+      return textResult(`## Category Settings for \`${input.userId}\`\n\n${body || "_No category settings found._"}`);
     }
     case "upsert_user_category_setting": {
       const input = upsertCategorySettingSchema.parse(args);
       await storage.upsertUserCategorySetting(input.userId, input.setting);
-      return jsonResult({ setting: input.setting });
+      return textResult(`## Category Setting Updated\n\n${formatCategorySetting(input.setting)}`);
     }
     case "list_newsletter_history": {
       const input = listHistorySchema.parse(args);
-      return jsonResult({ history: await storage.listHistory(input.userId, input.limit) });
+      const history = await storage.listHistory(input.userId, input.limit);
+      const body = history.map(formatHistoryEntry).join("\n\n---\n\n");
+      return textResult(`## Newsletter History for \`${input.userId}\`\n\n${body || "_No history found._"}`);
     }
     case "generate_newsletter_draft": {
       const input = generateDraftSchema.parse(args);
       const draft = await generator.generate(input);
-      return jsonResult(draft);
+      return textResult(formatDraft(draft));
     }
     case "generate_final_newsletter": {
       const input = generateFinalNewsletterSchema.parse(args);
-      const finalNewsletter = await renderer.generate(input);
-      return jsonResult(finalNewsletter);
+      const draft = await generator.generate(input);
+      return textResult(formatDraft(draft));
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
 }
 
-function jsonResult(value: unknown): ToolResult {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(value, null, 2)
-      }
-    ]
-  };
+function textResult(markdown: string): ToolResult {
+  return { content: [{ type: "text", text: markdown }] };
+}
+
+function formatWarnings(warnings: string[]): string {
+  if (warnings.length === 0) return "";
+  return "\n\n" + warnings.map(w => `> **Warning:** ${w}`).join("\n");
+}
+
+function formatProfile(profile: UserProfile): string {
+  const { schedule, formatPreference: fmt } = profile;
+  const scheduleStr = [
+    schedule.frequency,
+    `(${schedule.timezone})`,
+    schedule.preferredDay,
+    schedule.preferredTime,
+  ].filter(Boolean).join(" ");
+  return [
+    `## User Profile: \`${profile.userId}\``,
+    "",
+    `- **Interests**: ${profile.interests.join(", ") || "(none)"}`,
+    `- **Regions**: ${profile.regions.join(", ") || "(none)"}`,
+    `- **Tone**: ${profile.preferredTone}`,
+    `- **Schedule**: ${scheduleStr}`,
+    `- **Format**: ${fmt.length}, commentary: ${fmt.includeCommentary ? "yes" : "no"}, recommendations: ${fmt.includeRecommendations ? "yes" : "no"}`,
+    `- **Excluded Keywords**: ${profile.excludedKeywords.join(", ") || "(none)"}`,
+    `- **Updated**: ${profile.updatedAt}`,
+  ].join("\n");
+}
+
+function formatTemplate(template: NewsletterTemplate): string {
+  const sections = template.sections
+    .map(s => `  - **${s.id}** (${s.title}): max ${s.maxItems} items`)
+    .join("\n");
+  return [`### ${template.name} (\`${template.templateId}\`)`, "", "**Sections:**", sections].join("\n");
+}
+
+function formatCategorySetting(setting: InterestTagSetting): string {
+  return [
+    `### ${setting.label}`,
+    "",
+    `- **Aliases**: ${setting.aliases.join(", ") || "(none)"}`,
+    `- **Keywords**: ${setting.keywords.join(", ") || "(none)"}`,
+    `- **Source Hints**: ${setting.sourceHints.join(", ") || "(none)"}`,
+    `- **Weight**: ${setting.weight}`,
+    `- **Updated**: ${setting.updatedAt}`,
+  ].join("\n");
+}
+
+function formatHistoryEntry(entry: NewsletterHistoryEntry): string {
+  const { structuredRequest: req, draftSummary: summary } = entry;
+  return [
+    `### ${summary.title}`,
+    `\`${entry.id}\``,
+    "",
+    `- **Generated**: ${entry.generatedAt}`,
+    `- **Items**: ${summary.itemCount}`,
+    `- **Interests**: ${req.interests.join(", ") || "(none)"}`,
+    `- **Period**: ${req.period.start} ~ ${req.period.end}`,
+    `- **Top Sources**: ${summary.topSources.join(", ") || "(none)"}`,
+    ...(entry.userMessage ? [`- **Message**: "${entry.userMessage}"`] : []),
+  ].join("\n");
+}
+
+const SECTION_TITLES: Record<string, string> = {
+  top_stories: "오늘 주요 소식",
+  key_dates: "주요 일정",
+  deep_dive: "상세 해설",
+  recommendations: "관련 행사/장소/도서 추천",
+};
+
+function formatDraftSection(sectionId: string, items: RankedNewsletterItem[]): string {
+  const title = SECTION_TITLES[sectionId] ?? sectionId;
+  if (items.length === 0) return `### ${title}\n\n_No items._`;
+  const itemLines = items.map((item, i) => {
+    const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : item.title;
+    const meta = [item.sourceName, item.date].filter(Boolean).join(" · ");
+    return [`${i + 1}. **${link}** (score: ${item.importanceScore})`, `   ${item.summary}`, meta ? `   _${meta}_` : ""]
+      .filter(Boolean)
+      .join("\n");
+  });
+  return [`### ${title}`, "", ...itemLines].join("\n");
+}
+
+function formatDraftSources(sources: SourceRef[]): string {
+  if (sources.length === 0) return "";
+  const lines = sources.map(s => (s.sourceUrl ? `- [${s.sourceName}](${s.sourceUrl})` : `- ${s.sourceName}`));
+  return ["### Sources", "", ...lines].join("\n");
+}
+
+function formatDraft(draft: NewsletterDraft): string {
+  const { metadata: meta, sections, sources, warnings } = draft;
+  const header = [
+    `## ${draft.title}`,
+    "",
+    `**Draft ID**: \`${draft.draftId}\`  `,
+    `**Period**: ${meta.period.start} ~ ${meta.period.end}  `,
+    `**Tone**: ${meta.tone} | **Template**: \`${meta.templateId}\`  `,
+    `**Generated**: ${meta.generatedAt}`,
+  ].join("\n");
+  const sectionIds = ["top_stories", "key_dates", "deep_dive", "recommendations"] as const;
+  const sectionsText = sectionIds
+    .map(id => formatDraftSection(id, sections[id]))
+    .join("\n\n---\n\n");
+  const sourcesText = formatDraftSources(sources);
+  return [header, "---", sectionsText, sourcesText].filter(Boolean).join("\n\n") + formatWarnings(warnings);
 }
 
 const userIdSchema = z.object({

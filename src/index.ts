@@ -5,7 +5,6 @@ import {
   MockNewsProvider,
   MockRecommendationProvider
 } from "./providers/MockContentProviders.js";
-import { OpenAIResponsesProvider } from "./llm/OpenAIResponsesProvider.js";
 import { RssNewsProvider } from "./providers/RssNewsProvider.js";
 import { startMcpServer } from "./mcp/server.js";
 import { JsonFileStorage } from "./storage/JsonFileStorage.js";
@@ -27,9 +26,7 @@ const providers = [
   new MockRecommendationProvider(),
   new RssNewsProvider()
 ];
-const llmProvider = new OpenAIResponsesProvider();
-
-await startMcpServer(storage, providers, llmProvider, {
+await startMcpServer(storage, providers, {
   host,
   port,
   endpointPath,

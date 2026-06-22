@@ -11,8 +11,6 @@ import {
 import type { Request, Response } from "express";
 import type { Server as HttpServer } from "node:http";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
-import { FinalNewsletterRenderer } from "../pipeline/finalNewsletterRenderer.js";
-import type { LlmProvider } from "../llm/LlmProvider.js";
 import type { ContentProvider } from "../providers/ContentProvider.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 import { validateHttpSecurity } from "./httpSecurity.js";
@@ -32,7 +30,6 @@ export type HttpMcpServerOptions = {
 export async function startMcpServer(
   storage: NewsletterStorage,
   providers: ContentProvider[],
-  llmProvider: LlmProvider,
   options: HttpMcpServerOptions
 ): Promise<HttpServer> {
   assertRemoteConfiguration(options);
@@ -54,7 +51,7 @@ export async function startMcpServer(
       return;
     }
 
-    const server = createServer(storage, providers, llmProvider);
+    const server = createServer(storage, providers);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true
@@ -122,7 +119,7 @@ export async function startMcpServer(
   });
 }
 
-function createServer(storage: NewsletterStorage, providers: ContentProvider[], llmProvider: LlmProvider): Server {
+function createServer(storage: NewsletterStorage, providers: ContentProvider[]): Server {
   const server = new Server(
     {
       name: "chat-newsletter-mcp",
@@ -136,11 +133,10 @@ function createServer(storage: NewsletterStorage, providers: ContentProvider[], 
     }
   );
   const generator = new NewsletterDraftGenerator(storage, providers);
-  const renderer = new FinalNewsletterRenderer(generator, llmProvider);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => listTools());
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    return callTool(storage, generator, renderer, request.params.name, request.params.arguments ?? {});
+    return callTool(storage, generator, request.params.name, request.params.arguments ?? {});
   });
   server.setRequestHandler(ListResourcesRequestSchema, async () => listResources(storage));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listResourceTemplates());
