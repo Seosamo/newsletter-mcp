@@ -1,0 +1,21 @@
+{
+  "profiles": [
+    {
+      "userId": "default",
+      "interests": [],
+      "regions": [],
+      "preferredTone": "friendly",
+      "schedule": {
+        "frequency": "weekly",
+        "timezone": "Asia/Seoul"
+      },
+      "excludedKeywords": [],
+      "formatPreference": {
+        "length": "medium",
+        "includeCommentary": true,
+        "includeRecommendations": true
+      },
+      "updatedAt": "2026-06-22T00:00:00.000Z"
+    }
+  ]
+}

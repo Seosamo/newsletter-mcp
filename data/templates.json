@@ -1,0 +1,34 @@
+{
+  "templates": [
+    {
+      "templateId": "default_weekly",
+      "name": "Default Weekly Newsletter",
+      "sections": [
+        {
+          "id": "top_stories",
+          "title": "오늘 주요 소식",
+          "description": "요청 기간 안에서 가장 중요한 소식 후보",
+          "maxItems": 5
+        },
+        {
+          "id": "key_dates",
+          "title": "주요 일정",
+          "description": "다가오는 일정, 행사, 마감일 후보",
+          "maxItems": 5
+        },
+        {
+          "id": "deep_dive",
+          "title": "상세 해설",
+          "description": "LLM이 자세히 풀어쓸 만한 핵심 주제 후보",
+          "maxItems": 2
+        },
+        {
+          "id": "recommendations",
+          "title": "관련 행사/장소/도서 추천",
+          "description": "사용자 취향과 연결되는 추천 콘텐츠 후보",
+          "maxItems": 5
+        }
+      ]
+    }
+  ]
+}
