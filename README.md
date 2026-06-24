@@ -1,5 +1,7 @@
 # Chat Newsletter MCP
 
+> PlayMCP in KC 배포는 루트 `Dockerfile` 기반 Git 소스 빌드를 지원합니다. 단계별 안내는 [docs/playmcp-deploy.md](docs/playmcp-deploy.md)를 참고하세요.
+
 채팅 기반 사용자 관심사를 받아 Markdown 형식의 뉴스레터를 생성하는 MCP 서버입니다.
 
 사용자 선호도 관리, 콘텐츠 수집·랭킹·중복 제거, 뉴스레터 템플릿 매핑까지 전 과정을 처리합니다. 모든 툴 응답은 TextContent(Markdown) 형식으로 반환됩니다.

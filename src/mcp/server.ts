@@ -210,7 +210,11 @@ function assertRemoteConfiguration(options: HttpMcpServerOptions): void {
     return;
   }
 
-  if (!options.publicBaseUrl || !/^https:\/\/[^/]+/i.test(options.publicBaseUrl)) {
-    throw new Error("PUBLIC_BASE_URL must be an HTTPS public URL in production.");
+  if (!options.publicBaseUrl) {
+    return;
+  }
+
+  if (!/^https:\/\/[^/]+/i.test(options.publicBaseUrl)) {
+    throw new Error("PUBLIC_BASE_URL must be an HTTPS public URL when set in production.");
   }
 }
