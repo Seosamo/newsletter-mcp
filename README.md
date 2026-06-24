@@ -187,6 +187,25 @@ curl -X POST http://127.0.0.1:3000/mcp \
   }'
 ```
 
+<details>
+<summary>PowerShell용 예시</summary>
+
+```powershell
+# 헬스 체크
+curl.exe -s http://127.0.0.1:3000/health
+
+# 서버 초기화
+node --input-type=module -e "const body = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'manual-test', version: '0.1.0' } } }; const res = await fetch('http://127.0.0.1:3000/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify(body) }); console.log(await res.text());"
+
+# 툴 목록 조회
+node --input-type=module -e "const body = { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }; const res = await fetch('http://127.0.0.1:3000/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify(body) }); console.log(await res.text());"
+
+# 뉴스레터 초안 생성
+node --input-type=module -e "const body = { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'generate_newsletter_draft', arguments: { userId: 'default', userMessage: '이번 주 애니메이션/일본 뉴스레터 만들어줘', interests: ['애니메이션', '일본'], regions: ['일본'], period: { start: '2026-06-15', end: '2026-06-22' } } } }; const res = await fetch('http://127.0.0.1:3000/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify(body) }); console.log(await res.text());"
+```
+
+</details>
+
 ### 3. MCP Inspector (GUI — 권장)
 
 MCP Inspector는 브라우저 GUI에서 툴을 직접 탐색하고 호출할 수 있는 공식 디버깅 도구입니다.

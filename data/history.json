@@ -1,3 +1,247 @@
 {
-  "history": []
+  "history": [
+    {
+      "id": "draft_625e340f-02a9-4727-8cda-79e750159fee",
+      "userId": "default",
+      "userMessage": "?? ? ?????/?? ???? ????",
+      "structuredRequest": {
+        "interests": [
+          "?????",
+          "??"
+        ],
+        "regions": [
+          "??"
+        ],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-22T06:28:21.522Z",
+      "draftSummary": {
+        "title": "?????/?? 뉴스레터 초안",
+        "itemCount": 4,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_a113d660-b867-4272-856e-99ae7347b589",
+      "userId": "default",
+      "userMessage": "?? ? ?????/?? ???? ????",
+      "structuredRequest": {
+        "interests": [
+          "?????",
+          "??"
+        ],
+        "regions": [
+          "??"
+        ],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-22T06:28:45.473Z",
+      "draftSummary": {
+        "title": "?????/?? 뉴스레터 초안",
+        "itemCount": 4,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_af24c8ff-b6ef-4fdc-9632-98d797260675",
+      "userId": "default",
+      "userMessage": "이번 주 애니메이션/일본 뉴스레터 만들어줘",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-22T06:30:12.138Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_2d67d783-1c9a-4eaa-9dce-3b72c81c79f5",
+      "userId": "default",
+      "userMessage": "\"이번 주 애니메이션/일본 뉴스레터 만들어줘\"\n",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-22T06:31:42.333Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_0636d0b2-c4b3-4576-8b40-e2bf5b8ffbe4",
+      "userId": "default",
+      "userMessage": "이번 주 애니메이션/일본 뉴스레터 만들어줘",
+      "structuredRequest": {
+        "interests": [
+          "애니메이션",
+          "일본"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-24T07:34:06.649Z",
+      "draftSummary": {
+        "title": "애니메이션/일본 뉴스레터 초안",
+        "itemCount": 8,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_bf2b02be-9c1c-4ef9-87b3-2e763a7a81e5",
+      "userId": "default",
+      "userMessage": "이번 주 애니메이션/일본 뉴스레터 만들어줘",
+      "structuredRequest": {
+        "interests": [
+          "애니메이션",
+          "일본"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-15",
+          "end": "2026-06-22"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-24T07:39:58.687Z",
+      "draftSummary": {
+        "title": "애니메이션/일본 뉴스레터 초안",
+        "itemCount": 8,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_c606799c-7463-4b8c-b0fb-ef876c30a571",
+      "userId": "default",
+      "userMessage": "이번 주 애니메이션/일본 뉴스레터 만들어줘",
+      "structuredRequest": {
+        "interests": [
+          "애니메이션",
+          "일본"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-17",
+          "end": "2026-06-24"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-24T07:43:27.349Z",
+      "draftSummary": {
+        "title": "애니메이션/일본 뉴스레터 초안",
+        "itemCount": 8,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_d15bca59-c291-45cb-b9a6-f1cfa3125606",
+      "userId": "\"default\"",
+      "userMessage": "\"이번 주 애니메이션/일본 뉴스레터 만들어줘\"",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-17",
+          "end": "2026-06-24"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-24T07:44:00.660Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_cd44feac-1cd4-4ae5-8722-1075d7b98104",
+      "userId": "\"default\"",
+      "userMessage": "\"이번 주 애니메이션/일본 뉴스레터 만들어줘\"",
+      "structuredRequest": {
+        "interests": [
+          "애니메이션",
+          "일본"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-17",
+          "end": "2026-06-24"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-24T07:44:30.992Z",
+      "draftSummary": {
+        "title": "애니메이션/일본 뉴스레터 초안",
+        "itemCount": 8,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    }
+  ]
 }
