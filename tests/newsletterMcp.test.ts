@@ -10,9 +10,7 @@ import type {
   NewsletterTemplate,
   UserProfile
 } from "../src/domain/types.js";
-import type { LlmGenerateInput, LlmGenerateResult, LlmProvider } from "../src/llm/LlmProvider.js";
 import { NewsletterDraftGenerator } from "../src/pipeline/draftGenerator.js";
-import { FinalNewsletterRenderer } from "../src/pipeline/finalNewsletterRenderer.js";
 import { isSupportedProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from "../src/mcp/protocolVersion.js";
 import { listTools } from "../src/mcp/toolHandlers.js";
 import type { ContentProvider } from "../src/providers/ContentProvider.js";
@@ -186,34 +184,6 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(draft.draftId).toMatch(/^draft_/);
   });
 
-  it("renders a final newsletter through the configured LLM provider", async () => {
-    const storage = await createStorage({
-      profiles: [makeProfile("final", { interests: ["도시 산책"], regions: ["서울"] })],
-      categorySettings: {}
-    });
-    const generator = new NewsletterDraftGenerator(
-      storage,
-      [new MockNewsProvider(), new MockEventProvider(), new MockRecommendationProvider()],
-      () => new Date("2026-06-22T00:00:00.000Z")
-    );
-    const renderer = new FinalNewsletterRenderer(
-      generator,
-      new FakeLlmProvider(),
-      () => new Date("2026-06-22T00:00:00.000Z")
-    );
-
-    const result = await renderer.generate({
-      userId: "final",
-      userMessage: "이번 주 도시 산책 뉴스레터 만들어줘",
-      outputFormat: "markdown"
-    });
-
-    expect(result.newsletter.content).toContain("# 최종 뉴스레터");
-    expect(result.newsletter.format).toBe("markdown");
-    expect(result.newsletter.model).toBe("fake-model");
-    expect(result.draft.sections.top_stories.length).toBeGreaterThan(0);
-  });
-
   it("accepts only MCP protocol versions in the required supported range", () => {
     expect(SUPPORTED_PROTOCOL_VERSIONS).toEqual(["2025-03-26", "2025-06-18", "2025-11-25"]);
     expect(isSupportedProtocolVersion("2025-03-26")).toBe(true);
@@ -236,6 +206,7 @@ describe("chat-based newsletter MCP MVP", () => {
     const toolNames = tools.map((tool) => tool.name);
     const serviceName = "Chat Newsletter MCP(채팅 뉴스레터 MCP)";
     const validToolName = /^[A-Za-z0-9_-]{1,128}$/;
+    const expectedServiceName = "Chat Newsletter MCP(\uCC44\uD305 \uB274\uC2A4\uB808\uD130 MCP)";
 
     expect(tools.length).toBeGreaterThanOrEqual(3);
     expect(tools.length).toBeLessThanOrEqual(10);
@@ -244,7 +215,7 @@ describe("chat-based newsletter MCP MVP", () => {
     for (const tool of tools) {
       expect(tool.name).toMatch(validToolName);
       expect(tool.description.length).toBeLessThanOrEqual(1024);
-      expect(tool.description).toContain(serviceName);
+      expect(tool.description).toContain(expectedServiceName);
       expect(tool.inputSchema).toBeDefined();
       expect(tool.annotations).toEqual(
         expect.objectContaining({
@@ -268,19 +239,6 @@ class StaticProvider implements ContentProvider {
     return {
       items: this.items,
       warnings: []
-    };
-  }
-}
-
-class FakeLlmProvider implements LlmProvider {
-  readonly name = "fake-llm";
-  readonly defaultModel = "fake-model";
-
-  async generate(input: LlmGenerateInput): Promise<LlmGenerateResult> {
-    expect(input.messages[0].content).toContain("Structured draft JSON");
-    return {
-      content: "# 최종 뉴스레터\n\n테스트 본문입니다.",
-      model: input.model ?? this.defaultModel
     };
   }
 }

@@ -8,6 +8,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/src/index.js",
     "build": "tsc -p tsconfig.json",
+    "build:api-catalog": "tsx scripts/build-api-catalog.ts",
     "test": "vitest run",
     "inspect": "npx @modelcontextprotocol/inspector"
   },

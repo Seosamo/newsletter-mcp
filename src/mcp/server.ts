@@ -10,6 +10,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Request, Response } from "express";
 import type { Server as HttpServer } from "node:http";
+import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { ContentProvider } from "../providers/ContentProvider.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
@@ -30,6 +31,7 @@ export type HttpMcpServerOptions = {
 export async function startMcpServer(
   storage: NewsletterStorage,
   providers: ContentProvider[],
+  apiCatalogSelector: ApiCatalogSelector,
   options: HttpMcpServerOptions
 ): Promise<HttpServer> {
   assertRemoteConfiguration(options);
@@ -51,7 +53,7 @@ export async function startMcpServer(
       return;
     }
 
-    const server = createServer(storage, providers);
+    const server = createServer(storage, providers, apiCatalogSelector);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true
@@ -119,7 +121,11 @@ export async function startMcpServer(
   });
 }
 
-function createServer(storage: NewsletterStorage, providers: ContentProvider[]): Server {
+function createServer(
+  storage: NewsletterStorage,
+  providers: ContentProvider[],
+  apiCatalogSelector: ApiCatalogSelector
+): Server {
   const server = new Server(
     {
       name: "chat-newsletter-mcp",
@@ -136,7 +142,7 @@ function createServer(storage: NewsletterStorage, providers: ContentProvider[]):
 
   server.setRequestHandler(ListToolsRequestSchema, async () => listTools());
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    return callTool(storage, generator, request.params.name, request.params.arguments ?? {});
+    return callTool(storage, generator, apiCatalogSelector, request.params.name, request.params.arguments ?? {});
   });
   server.setRequestHandler(ListResourcesRequestSchema, async () => listResources(storage));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listResourceTemplates());

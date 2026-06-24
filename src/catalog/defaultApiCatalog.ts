@@ -1,0 +1,95 @@
+import type { ApiCatalogEntry } from "./types.js";
+
+export const DEFAULT_API_CATALOG_ENTRIES: ApiCatalogEntry[] = [
+  {
+    id: "kr-tourapi",
+    name: "Korea Tourism Organization TourAPI",
+    category: "culture-tourism",
+    description: "Tourist attractions, accommodations, restaurants, festivals, and travel information in Korea.",
+    url: "https://api.visitkorea.or.kr",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["tourism", "travel", "festival", "event", "place", "culture", "exhibition", "Korea", "Seoul"],
+    connectorId: "tourapi"
+  },
+  {
+    id: "kr-culture-info",
+    name: "Korea Culture Information API",
+    category: "culture-tourism",
+    description: "Culture, performance, exhibition, heritage, library, and related cultural information in Korea.",
+    url: "https://www.culture.go.kr",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["culture", "exhibition", "performance", "museum", "library", "book", "event", "Seoul"],
+    connectorId: "culture_info"
+  },
+  {
+    id: "global-eventbrite",
+    name: "Eventbrite",
+    category: "events",
+    description: "Event discovery API for events, venues, and organizers.",
+    url: "https://www.eventbrite.com/platform/api/",
+    auth: "OAuth",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["event", "conference", "festival", "exhibition", "meetup", "venue"],
+    connectorId: "eventbrite"
+  },
+  {
+    id: "global-ticketmaster",
+    name: "Ticketmaster Discovery API",
+    category: "events",
+    description: "Search for events, attractions, and venues.",
+    url: "https://developer.ticketmaster.com/products-and-docs/apis/getting-started/",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["event", "concert", "sports", "festival", "venue", "ticket"],
+    connectorId: "ticketmaster"
+  },
+  {
+    id: "kr-kma-weather",
+    name: "Korea Meteorological Administration Forecast API",
+    category: "weather-environment",
+    description: "Short-term weather forecast and weather observation data in Korea.",
+    url: "https://www.data.go.kr",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["weather", "forecast", "environment", "Korea", "Seoul", "climate"],
+    connectorId: "kma_weather"
+  },
+  {
+    id: "global-openaq",
+    name: "OpenAQ",
+    category: "weather-environment",
+    description: "Open air quality data from public sources around the world.",
+    url: "https://docs.openaq.org/",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["air quality", "environment", "pollution", "weather", "city"],
+    connectorId: "openaq"
+  },
+  {
+    id: "global-peakmetrics-news",
+    name: "PeakMetrics News",
+    category: "media-content",
+    description: "News articles and public datasets.",
+    url: "https://rapidapi.com/peakmetrics-peakmetrics-default/api/peakmetrics-news",
+    auth: "apiKey",
+    https: "Yes",
+    cors: "Unknown",
+    source: "seed",
+    keywords: ["news", "media", "article", "trend", "public data"],
+    connectorId: "candidate_only"
+  }
+];

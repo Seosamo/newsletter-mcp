@@ -105,13 +105,6 @@ export type GenerateNewsletterDraftInput = {
   templateId?: string;
 };
 
-export type NewsletterOutputFormat = "markdown" | "html" | "plain_text";
-
-export type GenerateFinalNewsletterInput = GenerateNewsletterDraftInput & {
-  outputFormat?: NewsletterOutputFormat;
-  model?: string;
-};
-
 export type RankedNewsletterItem = {
   id: string;
   title: string;
@@ -142,17 +135,6 @@ export type NewsletterDraft = {
   };
   sections: Record<NewsletterSectionId, RankedNewsletterItem[]>;
   sources: SourceRef[];
-  warnings: string[];
-};
-
-export type FinalNewsletter = {
-  draft: NewsletterDraft;
-  newsletter: {
-    content: string;
-    format: NewsletterOutputFormat;
-    model: string;
-    generatedAt: string;
-  };
   warnings: string[];
 };
 

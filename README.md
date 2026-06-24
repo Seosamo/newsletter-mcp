@@ -32,9 +32,10 @@ MCP 서버는 **툴(Tool)** 목록을 클라이언트에 노출하고, 클라이
 | `upsert_user_category_setting` | 관심 태그 메타데이터 생성/교체 | |
 | `list_newsletter_history` | 최근 생성된 뉴스레터 초안 이력 조회 | ✓ |
 | `generate_newsletter_draft` | 채팅 선호도 기반 뉴스레터 생성 (Markdown 반환) | |
-| `generate_final_newsletter` | `generate_newsletter_draft`와 동일 동작, 추가 파라미터(`outputFormat`, `model`) 수용 | |
+| `recommend_api_connectors` | 사용자 관심사에 맞는 public API 후보와 지원 여부 추천 | ✓ |
 
 > 채팅 파싱(관심사 추출 등)은 LLM 클라이언트 측에서 처리한 뒤 툴을 호출합니다.
+> 서버는 LLM API를 직접 호출하지 않고, 근거 데이터와 Markdown 초안을 반환합니다.
 
 ---
 
@@ -84,6 +85,28 @@ NEWSLETTER_MCP_DATA_DIR=/path/to/data npm run dev
 ```
 Authorization: Bearer <token>
 X-MCP-Auth: <token>
+```
+
+### 콘텐츠 수집
+
+| 변수 | 설명 |
+|---|---|
+| `ENABLE_DOMAIN_CONNECTORS` | `false`면 public API 기반 도메인 커넥터 비활성화 |
+| `DOMAIN_CONNECTOR_MAX_CONNECTORS` | draft 생성 시 시도할 도메인 커넥터 수 |
+| `TOUR_API_KEY` | 한국관광공사 TourAPI 호출 키 |
+| `CULTURE_INFO_API_URL` / `CULTURE_INFO_API_KEY` | 문화정보 계열 API 호출 설정 |
+| `EVENTBRITE_TOKEN` | Eventbrite API 호출 토큰 |
+| `TICKETMASTER_API_KEY` | Ticketmaster Discovery API 호출 키 |
+| `KMA_API_URL` / `KMA_API_KEY` | 기상청 계열 API 호출 설정 |
+| `OPENAQ_API_KEY` | OpenAQ API 호출 키 |
+| `BRAVE_SEARCH_API_KEY` | Brave Search 기반 웹 검색 provider 활성화 |
+| `ENABLE_WEB_SEARCH` | `true`면 API key 없이도 설정된 검색 endpoint를 시도 |
+| `ENABLE_MOCK_PROVIDERS` | `false`면 mock provider 제외 |
+
+API 카탈로그는 런타임마다 GitHub에서 읽지 않고 `data/apiCatalog.json`을 사용합니다. 갱신이 필요하면 아래 스크립트를 수동으로 실행합니다:
+
+```bash
+npm run build:api-catalog
 ```
 
 
@@ -197,7 +220,7 @@ https://your-public-domain.example/mcp
 
 모든 툴은 MCP `TextContent` 타입으로 Markdown 텍스트를 반환합니다.
 
-`generate_newsletter_draft` / `generate_final_newsletter` 응답 예시:
+`generate_newsletter_draft` 응답 예시:
 
 ```markdown
 ## 애니메이션/일본 뉴스레터 초안

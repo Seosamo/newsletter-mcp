@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { ApiConnectorRecommendation } from "../catalog/types.js";
+import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
 import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
 import type { InterestTagSetting, NewsletterDraft, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
@@ -19,14 +21,14 @@ type ToolAnnotation = {
   idempotentHint: boolean;
 };
 
-const SERVICE_NAME = "Chat Newsletter MCP(채팅 뉴스레터 MCP)";
+const SERVICE_NAME_FIXED = "Chat Newsletter MCP(\uCC44\uD305 \uB274\uC2A4\uB808\uD130 MCP)";
 
 export function listTools() {
   return {
     tools: [
       toolDefinition({
         name: "get_user_profile",
-        description: `Retrieves a user's newsletter preference profile from ${SERVICE_NAME}.`,
+        description: `Retrieves a user's newsletter preference profile from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("Get User Profile"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier.")
@@ -34,7 +36,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "update_user_preferences",
-        description: `Creates or patches a user's chat-derived newsletter preferences in ${SERVICE_NAME}.`,
+        description: `Creates or patches a user's chat-derived newsletter preferences in ${SERVICE_NAME_FIXED}.`,
         annotations: writeAnnotation("Update User Preferences"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier."),
@@ -48,13 +50,13 @@ export function listTools() {
       }),
       toolDefinition({
         name: "list_newsletter_templates",
-        description: `Lists available newsletter templates from ${SERVICE_NAME}.`,
+        description: `Lists available newsletter templates from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("List Newsletter Templates"),
         inputSchema: objectSchema({}, [])
       }),
       toolDefinition({
         name: "get_newsletter_template",
-        description: `Retrieves a newsletter template by id from ${SERVICE_NAME}.`,
+        description: `Retrieves a newsletter template by id from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("Get Newsletter Template"),
         inputSchema: objectSchema({
           templateId: stringSchema("Template id.")
@@ -62,7 +64,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "list_user_category_settings",
-        description: `Lists a user's dynamic interest tag settings from ${SERVICE_NAME}.`,
+        description: `Lists a user's dynamic interest tag settings from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("List User Category Settings"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier.")
@@ -70,7 +72,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "upsert_user_category_setting",
-        description: `Creates or replaces metadata for one user-defined interest tag in ${SERVICE_NAME}.`,
+        description: `Creates or replaces metadata for one user-defined interest tag in ${SERVICE_NAME_FIXED}.`,
         annotations: writeAnnotation("Upsert User Category Setting"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier."),
@@ -82,7 +84,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "list_newsletter_history",
-        description: `Lists recently generated newsletter drafts for a user from ${SERVICE_NAME}.`,
+        description: `Lists recently generated newsletter drafts for a user from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("List Newsletter History"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier."),
@@ -94,7 +96,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "generate_newsletter_draft",
-        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME}.`,
+        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}.`,
         annotations: openWorldWriteAnnotation("Generate Newsletter Draft"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier."),
@@ -121,14 +123,14 @@ export function listTools() {
         }, ["userId", "userMessage"])
       }),
       toolDefinition({
-        name: "generate_final_newsletter",
-        description: `Generates a structured draft and renders the final newsletter with the configured LLM provider using ${SERVICE_NAME}.`,
-        annotations: openWorldWriteAnnotation("Generate Final Newsletter"),
+        name: "recommend_api_connectors",
+        description: `Recommends public API connector candidates for user interests using ${SERVICE_NAME_FIXED}.`,
+        annotations: readOnlyAnnotation("Recommend API Connectors"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier."),
-          userMessage: stringSchema("Original user chat message."),
           interests: arrayStringSchema("Free-form user interest tags.", true),
           regions: arrayStringSchema("Preferred regions.", true),
+          keywords: arrayStringSchema("Additional search keywords.", true),
           period: {
             type: "object",
             additionalProperties: false,
@@ -136,23 +138,8 @@ export function listTools() {
               start: { type: "string" },
               end: { type: "string" }
             }
-          },
-          tone: {
-            type: "string",
-            enum: ["casual", "professional", "friendly", "analytical"]
-          },
-          format: {
-            type: "object",
-            additionalProperties: true
-          },
-          templateId: stringSchema("Template id.", true),
-          outputFormat: {
-            type: "string",
-            enum: ["markdown", "html", "plain_text"],
-            description: "Final newsletter output format."
-          },
-          model: stringSchema("Optional LLM model override.", true)
-        }, ["userId", "userMessage"])
+          }
+        }, ["userId"])
       })
     ]
   };
@@ -161,6 +148,7 @@ export function listTools() {
 export async function callTool(
   storage: NewsletterStorage,
   generator: NewsletterDraftGenerator,
+  apiCatalogSelector: ApiCatalogSelector,
   name: string,
   args: unknown
 ): Promise<ToolResult> {
@@ -213,10 +201,12 @@ export async function callTool(
       const draft = await generator.generate(input);
       return textResult(formatDraft(draft));
     }
-    case "generate_final_newsletter": {
-      const input = generateFinalNewsletterSchema.parse(args);
-      const draft = await generator.generate(input);
-      return textResult(formatDraft(draft));
+    case "recommend_api_connectors": {
+      const input = recommendApiConnectorsSchema.parse(args);
+      return textResult(formatApiConnectorRecommendations(
+        input.userId,
+        apiCatalogSelector.select(input, 8)
+      ));
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -331,6 +321,45 @@ function formatDraft(draft: NewsletterDraft): string {
   return [header, "---", sectionsText, sourcesText].filter(Boolean).join("\n\n") + formatWarnings(warnings);
 }
 
+function formatApiConnectorRecommendations(userId: string, recommendations: ApiConnectorRecommendation[]): string {
+  if (recommendations.length === 0) {
+    return [
+      `## API Connector Recommendations for \`${userId}\``,
+      "",
+      "_No relevant public API candidates were found._"
+    ].join("\n");
+  }
+
+  const body = recommendations.map((recommendation, index) => {
+    const { entry } = recommendation;
+    const status = recommendation.callable
+      ? "callable"
+      : recommendation.supported
+        ? "supported, needs configuration"
+        : "candidate only";
+    const requiredConfig = recommendation.requiresConfig.length > 0
+      ? recommendation.requiresConfig.join(", ")
+      : "none";
+
+    return [
+      `${index + 1}. **[${entry.name}](${entry.url})**`,
+      `   - Category: ${entry.category}`,
+      `   - Catalog source: ${entry.source}`,
+      `   - Auth: ${entry.auth} | HTTPS: ${entry.https} | CORS: ${entry.cors}`,
+      `   - Status: ${status}`,
+      `   - Required config: ${requiredConfig}`,
+      `   - Score: ${recommendation.score}`,
+      `   - Reason: ${recommendation.reasons.join("; ") || "catalog match"}`
+    ].join("\n");
+  });
+
+  return [
+    `## API Connector Recommendations for \`${userId}\``,
+    "",
+    ...body
+  ].join("\n\n");
+}
+
 const userIdSchema = z.object({
   userId: z.string().min(1)
 });
@@ -405,9 +434,12 @@ const generateDraftSchema = z.object({
   templateId: z.string().default(DEFAULT_TEMPLATE_ID).optional()
 });
 
-const generateFinalNewsletterSchema = generateDraftSchema.extend({
-  outputFormat: z.enum(["markdown", "html", "plain_text"]).optional(),
-  model: z.string().min(1).optional()
+const recommendApiConnectorsSchema = z.object({
+  userId: z.string().min(1),
+  interests: z.array(z.string()).default([]),
+  regions: z.array(z.string()).default([]),
+  keywords: z.array(z.string()).default([]),
+  period: periodSchema.optional()
 });
 
 function mergeProfile(profile: UserProfile, patch: z.infer<typeof profilePatchSchema>): UserProfile {
