@@ -66,6 +66,8 @@ http://127.0.0.1:3000/mcp
 NEWSLETTER_MCP_DATA_DIR=/path/to/data npm run dev
 ```
 
+프로젝트 루트의 `.env` 파일은 서버 시작 시 자동으로 로드됩니다. 이미 쉘에 설정된 환경변수는 `.env` 값으로 덮어쓰지 않습니다.
+
 ---
 
 ## 환경 변수
@@ -101,8 +103,19 @@ X-MCP-Auth: <token>
 | `TICKETMASTER_API_KEY` | Ticketmaster Discovery API 호출 키 |
 | `KMA_API_URL` / `KMA_API_KEY` | 기상청 계열 API 호출 설정 |
 | `OPENAQ_API_KEY` | OpenAQ API 호출 키 |
-| `BRAVE_SEARCH_API_KEY` | Brave Search 기반 웹 검색 provider 활성화 |
-| `ENABLE_WEB_SEARCH` | `true`면 API key 없이도 설정된 검색 endpoint를 시도 |
+| `WEB_SEARCH_PROVIDER` | `all`, `tavily`, `external_mcp`, `noapi_google_search`, `none` 중 선택 |
+| `TAVILY_API_KEY` | Tavily 기반 웹 검색 provider 활성화 |
+| `TAVILY_SEARCH_API_URL` | Tavily 호환 검색 endpoint (기본: `https://api.tavily.com/search`) |
+| `TAVILY_SEARCH_TOPIC` | Tavily topic: `general`, `news`, `finance` |
+| `TAVILY_SEARCH_DEPTH` | Tavily search depth: `basic`, `advanced`, `fast`, `ultra-fast` |
+| `TAVILY_INCLUDE_RAW_CONTENT` | Tavily raw content 포함 여부: `false`, `true`, `markdown`, `text` |
+| `ENABLE_WEB_SEARCH` | `true`면 Tavily provider를 강제 등록해 설정 누락 warning 확인 |
+| `EXTERNAL_MCP_SEARCH_COMMAND` / `NOAPI_GOOGLE_SEARCH_COMMAND` | 외부 검색 MCP 서버 실행 명령 |
+| `EXTERNAL_MCP_SEARCH_ARGS` / `NOAPI_GOOGLE_SEARCH_ARGS` | 외부 검색 MCP 서버 실행 인자 |
+| `EXTERNAL_MCP_SEARCH_TOOL_NAME` / `NOAPI_GOOGLE_SEARCH_TOOL_NAME` | 호출할 외부 MCP 검색 tool 이름 (기본: `search`) |
+| `EXTERNAL_MCP_SEARCH_QUERY_PARAM` / `NOAPI_GOOGLE_SEARCH_QUERY_PARAM` | 검색어 파라미터 이름 (기본: `query`) |
+| `EXTERNAL_MCP_SEARCH_MAX_RESULTS_PARAM` / `NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM` | 결과 수 파라미터 이름 (기본: `maxResults`) |
+| `ENABLE_EXTERNAL_MCP_SEARCH` / `ENABLE_NOAPI_GOOGLE_SEARCH` | 외부 MCP 검색 provider 강제 등록 |
 | `ENABLE_MOCK_PROVIDERS` | `false`면 mock provider 제외 |
 
 API 카탈로그는 런타임마다 GitHub에서 읽지 않고 `data/apiCatalog.json`을 사용합니다. 갱신이 필요하면 아래 스크립트를 수동으로 실행합니다:

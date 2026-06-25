@@ -14,26 +14,26 @@ type WebSearchProviderOptions = {
   extractHtml?: boolean;
   allowedDomains?: string[];
   blockedDomains?: string[];
+  topic?: "general" | "news" | "finance";
+  searchDepth?: "basic" | "advanced" | "fast" | "ultra-fast";
+  includeRawContent?: boolean | "markdown" | "text";
 };
 
-type BraveSearchResponse = {
-  web?: {
-    results?: BraveSearchResult[];
-  };
+type TavilySearchResponse = {
+  results?: TavilySearchResult[];
 };
 
-type BraveSearchResult = {
+type TavilySearchResult = {
   title?: string;
   url?: string;
-  description?: string;
-  age?: string;
-  profile?: {
-    name?: string;
-  };
+  content?: string;
+  raw_content?: string | null;
+  published_date?: string;
+  score?: number;
 };
 
 export class WebSearchProvider implements ContentProvider {
-  readonly name = "web-search";
+  readonly name = "tavily-search";
   private readonly apiKey?: string;
   private readonly endpoint: string;
   private readonly fetchFn: FetchLike;
@@ -44,10 +44,13 @@ export class WebSearchProvider implements ContentProvider {
   private readonly extractHtml: boolean;
   private readonly allowedDomains: string[];
   private readonly blockedDomains: string[];
+  private readonly topic: "general" | "news" | "finance";
+  private readonly searchDepth: "basic" | "advanced" | "fast" | "ultra-fast";
+  private readonly includeRawContent: boolean | "markdown" | "text";
 
   constructor(options: WebSearchProviderOptions = {}) {
     this.apiKey = options.apiKey;
-    this.endpoint = options.endpoint ?? "https://api.search.brave.com/res/v1/web/search";
+    this.endpoint = options.endpoint ?? "https://api.tavily.com/search";
     this.fetchFn = options.fetchFn ?? fetch;
     this.articleExtractor = options.articleExtractor ?? new HtmlArticleExtractor();
     this.maxResults = options.maxResults ?? 6;
@@ -56,13 +59,16 @@ export class WebSearchProvider implements ContentProvider {
     this.extractHtml = options.extractHtml ?? true;
     this.allowedDomains = normalizeDomains(options.allowedDomains ?? []);
     this.blockedDomains = normalizeDomains(options.blockedDomains ?? []);
+    this.topic = options.topic ?? "news";
+    this.searchDepth = options.searchDepth ?? "basic";
+    this.includeRawContent = options.includeRawContent ?? false;
   }
 
   async search(input: ContentSearchInput): Promise<ContentProviderResult> {
     if (!this.apiKey) {
       return {
         items: [],
-        warnings: ["Web search provider is disabled because BRAVE_SEARCH_API_KEY is not configured."]
+        warnings: ["Tavily search provider is disabled because TAVILY_API_KEY is not configured."]
       };
     }
 
@@ -89,7 +95,7 @@ export class WebSearchProvider implements ContentProvider {
       const extracted = this.extractHtml && index < this.maxPagesToExtract
         ? await this.tryExtract(result.url, warnings)
         : undefined;
-      const publishedAt = extracted?.publishedAt ?? toDateOnly(result.age);
+      const publishedAt = extracted?.publishedAt ?? toDateOnly(result.published_date);
       if (publishedAt && !isWithinPeriod(publishedAt, input.period.start, input.period.end)) {
         continue;
       }
@@ -97,13 +103,14 @@ export class WebSearchProvider implements ContentProvider {
       const title = extracted?.title ?? cleanText(result.title) ?? result.title;
       const summary = firstNonEmpty([
         extracted?.description,
-        cleanText(result.description),
+        cleanText(result.content),
         extracted?.text.slice(0, 280)
       ]) ?? title;
       const evidence = [
         summary,
+        ...(result.raw_content ? [cleanText(result.raw_content)?.slice(0, 1200) ?? ""] : []),
         ...(extracted?.text ? [extracted.text.slice(0, 1200)] : [])
-      ];
+      ].filter(Boolean);
       const searchable = `${title} ${summary} ${extracted?.text ?? ""}`.toLocaleLowerCase();
       const matchedInterests = input.interests.filter((interest) => searchable.includes(interest.toLocaleLowerCase()));
       const matchedKeywords = input.keywords.filter((keyword) => searchable.includes(keyword.toLocaleLowerCase()));
@@ -115,13 +122,13 @@ export class WebSearchProvider implements ContentProvider {
         title,
         summary,
         url: result.url,
-        sourceName: extracted?.sourceName ?? result.profile?.name ?? sourceNameFromUrl(result.url),
+        sourceName: extracted?.sourceName ?? sourceNameFromUrl(result.url),
         publishedAt,
         interestTags: matchedInterests.length > 0 ? matchedInterests : input.interests,
         regions: matchedRegions,
         keywords: matchedKeywords.length > 0 ? matchedKeywords : input.keywords,
         evidence,
-        sourceReliability: extracted ? 0.72 : 0.66
+        sourceReliability: extracted ? 0.74 : 0.68
       });
     }
 
@@ -132,18 +139,31 @@ export class WebSearchProvider implements ContentProvider {
     query: string,
     input: ContentSearchInput,
     warnings: string[]
-  ): Promise<BraveSearchResult[]> {
+  ): Promise<TavilySearchResult[]> {
     const url = new URL(this.endpoint);
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", String(this.maxResults));
-    url.searchParams.set("freshness", freshnessForPeriod(input.period.start, input.period.end));
+    const body = {
+      query,
+      search_depth: this.searchDepth,
+      max_results: this.maxResults,
+      topic: this.topic,
+      start_date: input.period.start,
+      end_date: input.period.end,
+      include_answer: false,
+      include_raw_content: this.includeRawContent,
+      include_images: false,
+      include_domains: this.allowedDomains.length > 0 ? this.allowedDomains : undefined,
+      exclude_domains: this.blockedDomains.length > 0 ? this.blockedDomains : undefined
+    };
 
     try {
       const response = await this.fetchFn(url.toString(), {
         headers: {
           accept: "application/json",
-          "x-subscription-token": this.apiKey ?? ""
+          authorization: `Bearer ${this.apiKey}`,
+          "content-type": "application/json"
         },
+        method: "POST",
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.timeoutMs)
       });
       if (!response.ok) {
@@ -155,8 +175,8 @@ export class WebSearchProvider implements ContentProvider {
         return [];
       }
 
-      const body = await response.json() as BraveSearchResponse;
-      return (body.web?.results ?? []).slice(0, this.maxResults);
+      const responseBody = await response.json() as TavilySearchResponse;
+      return (responseBody.results ?? []).slice(0, this.maxResults);
     } catch (error) {
       warnings.push(`Web search failed: ${error instanceof Error ? error.message : String(error)}`);
       return [];
@@ -196,19 +216,6 @@ function buildQuery(input: ContentSearchInput): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function freshnessForPeriod(start: string, end: string): "pd" | "pw" | "pm" | "py" {
-  const startMs = new Date(`${start}T00:00:00.000Z`).getTime();
-  const endMs = new Date(`${end}T00:00:00.000Z`).getTime();
-  const days = Number.isNaN(startMs) || Number.isNaN(endMs)
-    ? 30
-    : Math.max(Math.round((endMs - startMs) / 86_400_000), 1);
-
-  if (days <= 1) return "pd";
-  if (days <= 7) return "pw";
-  if (days <= 31) return "pm";
-  return "py";
 }
 
 function contentId(url: string): string {

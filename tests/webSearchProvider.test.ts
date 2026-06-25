@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ContentSearchInput } from "../src/domain/types.js";
+import { ExternalMcpSearchProvider, type ExternalMcpToolCall } from "../src/providers/ExternalMcpSearchProvider.js";
 import { extractArticleFromHtml, HtmlArticleExtractor, type FetchLike } from "../src/providers/HtmlArticleExtractor.js";
 import { WebSearchProvider } from "../src/providers/WebSearchProvider.js";
 
@@ -63,27 +64,83 @@ describe("WebSearchProvider", () => {
     const result = await provider.search(makeInput());
 
     expect(result.items).toEqual([]);
-    expect(result.warnings[0]).toContain("BRAVE_SEARCH_API_KEY");
+    expect(result.warnings[0]).toContain("TAVILY_API_KEY");
+  });
+
+  it("converts external MCP search results into content items", async () => {
+    const calls: ExternalMcpToolCall[] = [];
+    const provider = new ExternalMcpSearchProvider({
+      command: "node",
+      args: ["fake-search-server.js"],
+      toolName: "google_search",
+      queryParameter: "q",
+      maxResultsParameter: "limit",
+      maxResults: 2,
+      toolCaller: async (call) => {
+        calls.push(call);
+        return {
+          structuredContent: {
+            results: [
+              {
+                title: "Japan economy update",
+                url: "https://example.com/news/economy",
+                snippet: "Japan economy data improved this week.",
+                source: "Example Search"
+              }
+            ]
+          }
+        };
+      }
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(calls[0]).toMatchObject({
+      command: "node",
+      args: ["fake-search-server.js"],
+      toolName: "google_search",
+      toolArgs: {
+        q: "Japan visa",
+        limit: 2
+      }
+    });
+    expect(result.warnings).toEqual([]);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      title: "Japan economy update",
+      sourceName: "Example Search",
+      interestTags: ["Japan"]
+    });
   });
 });
 
-const fakeSearchFetch: FetchLike = async (url) => {
-  expect(url).toContain("api.search.brave.com");
+const fakeSearchFetch: FetchLike = async (url, init) => {
+  expect(url).toContain("api.tavily.com/search");
+  expect(init?.method).toBe("POST");
+  expect(init?.headers).toMatchObject({
+    authorization: "Bearer test-key",
+    "content-type": "application/json"
+  });
+  expect(JSON.parse(String(init?.body))).toMatchObject({
+    query: "Japan visa",
+    max_results: 2,
+    topic: "news",
+    start_date: "2026-06-15",
+    end_date: "2026-06-23"
+  });
   return {
     ok: true,
     status: 200,
     async json() {
       return {
-        web: {
-          results: [
-            {
-              title: "Japan visa fees rise",
-              url: "https://example.com/news/japan",
-              description: "Japan announced a visa fee hike.",
-              profile: { name: "Example News" }
-            }
-          ]
-        }
+        results: [
+          {
+            title: "Japan visa fees rise",
+            url: "https://example.com/news/japan",
+            content: "Japan announced a visa fee hike.",
+            published_date: "2026-06-22"
+          }
+        ]
       };
     },
     async text() {
