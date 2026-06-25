@@ -201,6 +201,16 @@ describe("chat-based newsletter MCP MVP", () => {
     }
   });
 
+  it("does not expose search provider internals as direct tools", () => {
+    const toolNames = listTools().tools.map((tool) => tool.name);
+
+    expect(toolNames).not.toContain("search_web");
+    expect(toolNames).not.toContain("google_search");
+    expect(toolNames).not.toContain("ocr_image");
+    expect(toolNames).not.toContain("fetch_emails");
+    expect(toolNames).not.toContain("upload_to_s3");
+  });
+
   it("exposes tool metadata that satisfies integration policy constraints", () => {
     const tools = listTools().tools;
     const toolNames = tools.map((tool) => tool.name);

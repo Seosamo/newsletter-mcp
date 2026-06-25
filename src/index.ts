@@ -79,9 +79,9 @@ if (shouldEnableProvider(
     command: firstEnv("EXTERNAL_MCP_SEARCH_COMMAND", "NOAPI_GOOGLE_SEARCH_COMMAND"),
     args: parseCommandArgs(searchEnv(externalMcpSearchUsesGeneric, "ARGS")),
     cwd: searchEnv(externalMcpSearchUsesGeneric, "CWD"),
-    toolName: searchEnv(externalMcpSearchUsesGeneric, "TOOL_NAME") ?? "search",
+    toolName: searchEnv(externalMcpSearchUsesGeneric, "TOOL_NAME") ?? defaultExternalMcpToolName(externalMcpSearchUsesGeneric),
     queryParameter: searchEnv(externalMcpSearchUsesGeneric, "QUERY_PARAM") ?? "query",
-    maxResultsParameter: searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS_PARAM") ?? "maxResults",
+    maxResultsParameter: searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS_PARAM") ?? defaultExternalMcpMaxResultsParameter(externalMcpSearchUsesGeneric),
     regionParameter: searchEnv(externalMcpSearchUsesGeneric, "REGION_PARAM"),
     maxResults: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS") ?? firstEnv("WEB_SEARCH_MAX_RESULTS"), 6),
     timeoutMs: parseInteger(firstEnv("EXTERNAL_MCP_SEARCH_TIMEOUT_MS", "WEB_SEARCH_TIMEOUT_MS"), 10000)
@@ -131,6 +131,14 @@ function searchEnv(usesGeneric: boolean, suffix: string): string | undefined {
   const genericKey = `EXTERNAL_MCP_SEARCH_${suffix}`;
   const noApiKey = `NOAPI_GOOGLE_SEARCH_${suffix}`;
   return usesGeneric ? firstEnv(genericKey, noApiKey) : firstEnv(noApiKey, genericKey);
+}
+
+function defaultExternalMcpToolName(usesGeneric: boolean): string {
+  return usesGeneric ? "search" : "google_search";
+}
+
+function defaultExternalMcpMaxResultsParameter(usesGeneric: boolean): string {
+  return usesGeneric ? "maxResults" : "num_results";
 }
 
 function shouldEnableProvider(providerName: "tavily" | "external_mcp", configured: boolean): boolean {

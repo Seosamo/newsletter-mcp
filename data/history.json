@@ -242,6 +242,101 @@
           "Mock Recommendations"
         ]
       }
+    },
+    {
+      "id": "draft_dcb842e8-00b0-44df-88ca-2a307e15180f",
+      "userId": "default",
+      "userMessage": "최근 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-18",
+          "end": "2026-06-25"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-25T07:03:28.025Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_b7ee1827-75c1-432b-a6ec-177858eb7c5e",
+      "userId": "default",
+      "userMessage": "최근 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-18",
+          "end": "2026-06-25"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-25T07:14:05.247Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_e521d6f8-2ada-45dd-9724-9c272134722b",
+      "userId": "default",
+      "userMessage": "최근 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [],
+        "regions": [],
+        "period": {
+          "start": "2026-06-18",
+          "end": "2026-06-25"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-25T07:15:18.653Z",
+      "draftSummary": {
+        "title": "맞춤 뉴스레터 초안",
+        "itemCount": 0,
+        "topSources": []
+      }
+    },
+    {
+      "id": "draft_8197084d-b18c-4934-be48-ea0474473b23",
+      "userId": "default",
+      "userMessage": "최근 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [
+          "일본 애니메이션",
+          "애니메이션 뉴스"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-18",
+          "end": "2026-06-25"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-25T07:21:27.201Z",
+      "draftSummary": {
+        "title": "일본 애니메이션/애니메이션 뉴스 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "n-smart.net",
+          "ko.wikipedia.org",
+          "mediahub.seoul.go.kr",
+          "ytn.co.kr",
+          "newswire.co.kr"
+        ]
+      }
     }
   ]
 }

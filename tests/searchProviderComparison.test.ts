@@ -32,9 +32,9 @@ describeLiveComparison("live generic search provider comparison", () => {
       command: firstEnv("EXTERNAL_MCP_SEARCH_COMMAND", "NOAPI_GOOGLE_SEARCH_COMMAND"),
       args: parseCommandArgs(searchEnv(externalMcpSearchUsesGeneric, "ARGS")),
       cwd: searchEnv(externalMcpSearchUsesGeneric, "CWD"),
-      toolName: searchEnv(externalMcpSearchUsesGeneric, "TOOL_NAME") ?? "search",
+      toolName: searchEnv(externalMcpSearchUsesGeneric, "TOOL_NAME") ?? defaultExternalMcpToolName(externalMcpSearchUsesGeneric),
       queryParameter: searchEnv(externalMcpSearchUsesGeneric, "QUERY_PARAM") ?? "query",
-      maxResultsParameter: searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS_PARAM") ?? "maxResults",
+      maxResultsParameter: searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS_PARAM") ?? defaultExternalMcpMaxResultsParameter(externalMcpSearchUsesGeneric),
       regionParameter: searchEnv(externalMcpSearchUsesGeneric, "REGION_PARAM"),
       maxResults,
       timeoutMs: parseInteger(firstEnv("EXTERNAL_MCP_SEARCH_TIMEOUT_MS", "WEB_SEARCH_TIMEOUT_MS"), 20_000)
@@ -263,6 +263,14 @@ function searchEnv(usesGeneric: boolean, suffix: string): string | undefined {
   const genericKey = `EXTERNAL_MCP_SEARCH_${suffix}`;
   const noApiKey = `NOAPI_GOOGLE_SEARCH_${suffix}`;
   return usesGeneric ? firstEnv(genericKey, noApiKey) : firstEnv(noApiKey, genericKey);
+}
+
+function defaultExternalMcpToolName(usesGeneric: boolean): string {
+  return usesGeneric ? "search" : "google_search";
+}
+
+function defaultExternalMcpMaxResultsParameter(usesGeneric: boolean): string {
+  return usesGeneric ? "maxResults" : "num_results";
 }
 
 function parseCommandArgs(value: string | undefined): string[] {

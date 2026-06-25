@@ -287,6 +287,11 @@ function extractStructuredResultTexts(value: unknown): string[] {
 }
 
 function parseLinksFromText(text: string): Array<Record<string, unknown>> {
+  const numberedResults = parseNumberedUrlResults(text);
+  if (numberedResults.length > 0) {
+    return numberedResults;
+  }
+
   const results: Array<Record<string, unknown>> = [];
   const markdownLink = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)(?:\s*[-:]\s*([^\n]+))?/g;
   let match: RegExpExecArray | null;
@@ -311,6 +316,72 @@ function parseLinksFromText(text: string): Array<Record<string, unknown>> {
     });
   }
   return results;
+}
+
+function parseNumberedUrlResults(text: string): Array<Record<string, unknown>> {
+  const results: Array<Record<string, unknown>> = [];
+  let current: {
+    title?: string;
+    url?: string;
+    sourceName?: string;
+    snippetParts: string[];
+  } | undefined;
+
+  const flush = () => {
+    if (!current?.url) {
+      return;
+    }
+    results.push({
+      title: current.title,
+      url: current.url,
+      sourceName: current.sourceName,
+      snippet: current.snippetParts.join(" ")
+    });
+  };
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const titleMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (titleMatch) {
+      flush();
+      current = {
+        title: titleMatch[1],
+        snippetParts: []
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const urlMatch = trimmed.match(/^URL:\s*(https?:\/\/\S+)/i);
+    if (urlMatch) {
+      current.url = stripTrailingUrlPunctuation(urlMatch[1]);
+      continue;
+    }
+
+    const sourceMatch = trimmed.match(/^Source:\s*(.+)$/i);
+    if (sourceMatch) {
+      current.sourceName = sourceMatch[1].split(/\s+-\s+/)[0]?.trim();
+      continue;
+    }
+
+    if (!/^(Authors|Cited by):/i.test(trimmed)) {
+      current.snippetParts.push(trimmed);
+    }
+  }
+
+  flush();
+  return results;
+}
+
+function stripTrailingUrlPunctuation(url: string): string {
+  return url.replace(/[),.;]+$/, "");
 }
 
 function tryParseJson(text: string): unknown {

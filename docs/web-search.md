@@ -33,15 +33,38 @@ WEB_SEARCH_BLOCKED_DOMAINS=
 
 NOAPI_GOOGLE_SEARCH_COMMAND=
 NOAPI_GOOGLE_SEARCH_ARGS=
-NOAPI_GOOGLE_SEARCH_TOOL_NAME=search
+NOAPI_GOOGLE_SEARCH_TOOL_NAME=google_search
 NOAPI_GOOGLE_SEARCH_QUERY_PARAM=query
-NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM=maxResults
+NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM=num_results
 ENABLE_NOAPI_GOOGLE_SEARCH=false
 ```
 
 `TAVILY_API_KEY` is enough to enable the Tavily provider. `ENABLE_WEB_SEARCH=true` can be used to force registration and surface a warning when the key is missing.
 
-For an external MCP search provider, configure either the generic `EXTERNAL_MCP_SEARCH_*` variables or the no-API Google aliases `NOAPI_GOOGLE_SEARCH_*`. The server spawns the configured MCP server over stdio, calls the configured search tool, and normalizes returned links or structured results into `ContentItem` records.
+For an external MCP search provider, configure either the generic `EXTERNAL_MCP_SEARCH_*` variables or the no-API Google aliases `NOAPI_GOOGLE_SEARCH_*`. The server spawns the configured MCP server over stdio, calls one configured search tool, and normalizes returned links or structured results into `ContentItem` records. The no-API Google aliases default to `google_search` with `query` and `num_results`; generic `EXTERNAL_MCP_SEARCH_*` defaults stay `search`, `query`, and `maxResults`.
+
+Only the configured search tool is called from this server while generating newsletter drafts. The child MCP server's other tools, such as local file, email, OCR, media, or S3 tools, are not registered in this server's `tools/list`.
+
+## noapi-google-search-mcp setup
+
+Install the external MCP server and its Chromium runtime:
+
+```bash
+pipx install noapi-google-search-mcp
+playwright install chromium
+```
+
+Then enable it for this project:
+
+```bash
+WEB_SEARCH_PROVIDER=noapi_google_search
+NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp
+NOAPI_GOOGLE_SEARCH_MAX_RESULTS=6
+ENABLE_MOCK_PROVIDERS=false
+npm run dev
+```
+
+`NOAPI_GOOGLE_SEARCH_TOOL_NAME`, `NOAPI_GOOGLE_SEARCH_QUERY_PARAM`, and `NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM` can be omitted for this package because this project defaults them to `google_search`, `query`, and `num_results`.
 
 To inspect real web results without mock content mixed in:
 
@@ -57,9 +80,7 @@ To compare Tavily and an external search MCP side-by-side, configure both provid
 ```bash
 WEB_SEARCH_PROVIDER=all
 TAVILY_API_KEY=...
-NOAPI_GOOGLE_SEARCH_COMMAND=node
-NOAPI_GOOGLE_SEARCH_ARGS='["path/to/noapi-google-search-mcp.js"]'
-NOAPI_GOOGLE_SEARCH_TOOL_NAME=search
+NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp
 npm run dev
 ```
 
@@ -68,9 +89,7 @@ You can also run the live generic-search comparison test. It does not call domai
 ```bash
 RUN_SEARCH_COMPARISON=true
 TAVILY_API_KEY=...
-NOAPI_GOOGLE_SEARCH_COMMAND=node
-NOAPI_GOOGLE_SEARCH_ARGS='["path/to/noapi-google-search-mcp.js"]'
-NOAPI_GOOGLE_SEARCH_TOOL_NAME=search
+NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp
 npm run test:search-comparison
 ```
 
@@ -84,6 +103,8 @@ SEARCH_COMPARISON_MAX_RESULTS=8
 ```
 
 ## Example request
+
+Newsletter generation with the configured search backend:
 
 ```json
 {

@@ -112,6 +112,46 @@ describe("WebSearchProvider", () => {
       interestTags: ["Japan"]
     });
   });
+
+  it("passes configured noapi result limits and parses noapi text output", async () => {
+    const calls: ExternalMcpToolCall[] = [];
+    const provider = new ExternalMcpSearchProvider({
+      command: "noapi-google-search-mcp",
+      toolName: "google_search",
+      maxResultsParameter: "num_results",
+      maxResults: 6,
+      toolCaller: async (call) => {
+        calls.push(call);
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                "Google Search Results for: Japan economy",
+                "",
+                "1. Japan economy grows",
+                " URL: https://example.com/economy",
+                " Japan economy data improved this week."
+              ].join("\n")
+            }
+          ]
+        };
+      }
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(calls[0].toolArgs).toMatchObject({
+      query: "Japan visa",
+      num_results: 6
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      title: "Japan economy grows",
+      url: "https://example.com/economy",
+      summary: "Japan economy data improved this week."
+    });
+  });
 });
 
 const fakeSearchFetch: FetchLike = async (url, init) => {
