@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ContentSearchInput } from "../src/domain/types.js";
-import { ExternalMcpSearchProvider, type ExternalMcpToolCall } from "../src/providers/ExternalMcpSearchProvider.js";
+import { ExternalMcpSearchProvider, selectTemporaryMiddleChunks, type ExternalMcpToolCall, type PageTextChunk } from "../src/providers/ExternalMcpSearchProvider.js";
 import { extractArticleFromHtml, HtmlArticleExtractor, type FetchLike } from "../src/providers/HtmlArticleExtractor.js";
 import { WebSearchProvider } from "../src/providers/WebSearchProvider.js";
 
@@ -151,6 +151,76 @@ describe("WebSearchProvider", () => {
       url: "https://example.com/economy",
       summary: "Japan economy data improved this week."
     });
+  });
+
+  it("enriches noapi search results with visited page content", async () => {
+    const calls: ExternalMcpToolCall[] = [];
+    const provider = new ExternalMcpSearchProvider({
+      command: "noapi-google-search-mcp",
+      toolName: "google_search",
+      maxResultsParameter: "num_results",
+      maxResults: 2,
+      visitPageToolName: "visit_page",
+      maxPagesToVisit: 1,
+      pageChunkMaxChars: 80,
+      pageChunkOverlapChars: 0,
+      maxSelectedChunksPerPage: 1,
+      maxSelectedChunksTotal: 1,
+      toolCaller: async (call) => {
+        calls.push(call);
+        if (call.toolName === "visit_page") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: [
+                  "Opening context only gives background for readers.",
+                  "Middle chunk says semiconductor demand increased exports.",
+                  "Closing context only covers market reactions."
+                ].join(" ")
+              }
+            ]
+          };
+        }
+        return {
+          structuredContent: {
+            results: [
+              {
+                title: "Japan economy update",
+                url: "https://example.com/news/economy",
+                snippet: "Japan economy data improved this week.",
+                source: "Example Search"
+              }
+            ]
+          }
+        };
+      }
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(calls.map((call) => call.toolName)).toEqual(["google_search", "visit_page"]);
+    expect(calls[1].toolArgs).toEqual({
+      url: "https://example.com/news/economy"
+    });
+    expect(result.warnings).toEqual([]);
+    expect(result.items[0].summary).toContain("Japan economy data improved this week.");
+    expect(result.items[0].summary).toContain("Selected page chunks:");
+    expect(result.items[0].summary).toContain("[Page chunk 2/3] Middle chunk says semiconductor demand increased exports.");
+    expect(result.items[0].summary).not.toContain("Opening context only");
+    expect(result.items[0].evidence.join(" ")).toContain("semiconductor demand");
+    expect(result.items[0].sourceReliability).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it("temporarily selects the middle page chunks", () => {
+    const chunks: PageTextChunk[] = Array.from({ length: 5 }, (_, index) => ({
+      index,
+      total: 5,
+      text: `chunk-${index}`
+    }));
+
+    expect(selectTemporaryMiddleChunks(chunks, 1).map((chunk) => chunk.index)).toEqual([2]);
+    expect(selectTemporaryMiddleChunks(chunks, 2).map((chunk) => chunk.index)).toEqual([1, 2]);
   });
 });
 

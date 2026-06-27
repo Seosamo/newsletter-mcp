@@ -337,6 +337,132 @@
           "newswire.co.kr"
         ]
       }
+    },
+    {
+      "id": "draft_061bab32-8dec-466e-ac13-c23603c89540",
+      "userId": "default",
+      "userMessage": "최신 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [
+          "일본 애니메이션",
+          "애니메이션 뉴스"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-18",
+          "end": "2026-06-25"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-25T09:06:33.258Z",
+      "draftSummary": {
+        "title": "일본 애니메이션/애니메이션 뉴스 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "n-smart.net",
+          "ko.wikipedia.org",
+          "newswire.co.kr",
+          "ytn.co.kr",
+          "mediahub.seoul.go.kr"
+        ]
+      }
+    },
+    {
+      "id": "draft_0794a8da-933b-4a1c-a529-6d2faa55b683",
+      "userId": "default",
+      "userMessage": "삼성전자 주가",
+      "structuredRequest": {
+        "interests": [
+          "삼성전자",
+          "주식"
+        ],
+        "regions": [
+          "대한민국"
+        ],
+        "period": {
+          "start": "2026-06-19",
+          "end": "2026-06-26"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-26T11:33:41.698Z",
+      "draftSummary": {
+        "title": "삼성전자/주식 뉴스레터 초안",
+        "itemCount": 8,
+        "topSources": [
+          "Mock News",
+          "Mock Events",
+          "Mock Recommendations"
+        ]
+      }
+    },
+    {
+      "id": "draft_f343a104-25de-437b-b0e2-3b4204ca9237",
+      "userId": "default",
+      "userMessage": "삼성전자 주가",
+      "structuredRequest": {
+        "interests": [
+          "주식",
+          "삼성전자"
+        ],
+        "regions": [
+          "대한민국"
+        ],
+        "period": {
+          "start": "2026-06-19",
+          "end": "2026-06-26"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-26T11:37:15.342Z",
+      "draftSummary": {
+        "title": "주식/삼성전자 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "finance.naver.com",
+          "m.finance.daum.net",
+          "stock.mk.co.kr",
+          "stockplus.com",
+          "alphasquare.co.kr"
+        ]
+      }
+    },
+    {
+      "id": "draft_fd62f0d7-a6eb-42ef-a35e-a39c2905a9c9",
+      "userId": "default",
+      "userMessage": "삼성전자 주가",
+      "structuredRequest": {
+        "interests": [
+          "주식",
+          "삼성전자"
+        ],
+        "regions": [
+          "대한민국"
+        ],
+        "period": {
+          "start": "2026-06-19",
+          "end": "2026-06-26"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-26T12:59:38.739Z",
+      "draftSummary": {
+        "title": "주식/삼성전자 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "finance.naver.com",
+          "m.finance.daum.net",
+          "stock.mk.co.kr",
+          "stockplus.com",
+          "alphasquare.co.kr"
+        ]
+      }
     }
   ]
 }

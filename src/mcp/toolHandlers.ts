@@ -290,11 +290,15 @@ function formatDraftSection(sectionId: string, items: RankedNewsletterItem[]): s
   const itemLines = items.map((item, i) => {
     const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : item.title;
     const meta = [item.sourceName, item.date].filter(Boolean).join(" · ");
-    return [`${i + 1}. **${link}** (score: ${item.importanceScore})`, `   ${item.summary}`, meta ? `   _${meta}_` : ""]
+    return [`${i + 1}. **${link}** (score: ${item.importanceScore})`, indentBlock(item.summary, "   "), meta ? `   _${meta}_` : ""]
       .filter(Boolean)
       .join("\n");
   });
   return [`### ${title}`, "", ...itemLines].join("\n");
+}
+
+function indentBlock(text: string, prefix: string): string {
+  return text.split(/\r?\n/).map((line) => line ? `${prefix}${line}` : "").join("\n");
 }
 
 function formatDraftSources(sources: SourceRef[]): string {

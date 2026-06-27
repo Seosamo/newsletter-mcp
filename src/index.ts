@@ -75,6 +75,7 @@ if (shouldEnableProvider(
     process.env.ENABLE_NOAPI_GOOGLE_SEARCH === "true"
 )) {
   const externalMcpSearchUsesGeneric = Boolean(firstEnv("EXTERNAL_MCP_SEARCH_COMMAND"));
+  const visitPages = shouldVisitExternalMcpPages(externalMcpSearchUsesGeneric);
   providers.push(new ExternalMcpSearchProvider({
     command: firstEnv("EXTERNAL_MCP_SEARCH_COMMAND", "NOAPI_GOOGLE_SEARCH_COMMAND"),
     args: parseCommandArgs(searchEnv(externalMcpSearchUsesGeneric, "ARGS")),
@@ -84,6 +85,19 @@ if (shouldEnableProvider(
     maxResultsParameter: searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS_PARAM") ?? defaultExternalMcpMaxResultsParameter(externalMcpSearchUsesGeneric),
     regionParameter: searchEnv(externalMcpSearchUsesGeneric, "REGION_PARAM"),
     maxResults: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_RESULTS") ?? firstEnv("WEB_SEARCH_MAX_RESULTS"), 6),
+    visitPageToolName: visitPages
+      ? searchEnv(externalMcpSearchUsesGeneric, "VISIT_PAGE_TOOL_NAME") ?? "visit_page"
+      : undefined,
+    visitPageUrlParameter: searchEnv(externalMcpSearchUsesGeneric, "VISIT_PAGE_URL_PARAM") ?? "url",
+    maxPagesToVisit: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_PAGES_TO_VISIT"), 3),
+    pageChunkMaxChars: parseInteger(
+      searchEnv(externalMcpSearchUsesGeneric, "PAGE_CHUNK_MAX_CHARS") ??
+        searchEnv(externalMcpSearchUsesGeneric, "PAGE_CONTENT_MAX_CHARS"),
+      1800
+    ),
+    pageChunkOverlapChars: parseNonNegativeInteger(searchEnv(externalMcpSearchUsesGeneric, "PAGE_CHUNK_OVERLAP_CHARS"), 200),
+    maxSelectedChunksPerPage: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_PER_PAGE"), 1),
+    maxSelectedChunksTotal: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_TOTAL"), 3),
     timeoutMs: parseInteger(firstEnv("EXTERNAL_MCP_SEARCH_TIMEOUT_MS", "WEB_SEARCH_TIMEOUT_MS"), 10000)
   }));
 }
@@ -117,6 +131,21 @@ function parseInteger(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "on"].includes(value.trim().toLocaleLowerCase());
+}
+
 function firstEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = process.env[key]?.trim();
@@ -139,6 +168,14 @@ function defaultExternalMcpToolName(usesGeneric: boolean): string {
 
 function defaultExternalMcpMaxResultsParameter(usesGeneric: boolean): string {
   return usesGeneric ? "maxResults" : "num_results";
+}
+
+function shouldVisitExternalMcpPages(usesGeneric: boolean): boolean {
+  const configured = searchEnv(usesGeneric, "VISIT_PAGES");
+  if (configured !== undefined) {
+    return parseBoolean(configured, !usesGeneric);
+  }
+  return !usesGeneric;
 }
 
 function shouldEnableProvider(providerName: "tavily" | "external_mcp", configured: boolean): boolean {

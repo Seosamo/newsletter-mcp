@@ -16,6 +16,12 @@ export type ExternalMcpToolCall = {
 
 export type ExternalMcpToolCaller = (call: ExternalMcpToolCall) => Promise<unknown>;
 
+export type PageTextChunk = {
+  index: number;
+  total: number;
+  text: string;
+};
+
 type ExternalMcpSearchProviderOptions = {
   command?: string;
   args?: string[];
@@ -26,6 +32,14 @@ type ExternalMcpSearchProviderOptions = {
   maxResultsParameter?: string;
   regionParameter?: string;
   maxResults?: number;
+  visitPageToolName?: string;
+  visitPageUrlParameter?: string;
+  maxPagesToVisit?: number;
+  pageContentMaxChars?: number;
+  pageChunkMaxChars?: number;
+  pageChunkOverlapChars?: number;
+  maxSelectedChunksPerPage?: number;
+  maxSelectedChunksTotal?: number;
   timeoutMs?: number;
   toolCaller?: ExternalMcpToolCaller;
 };
@@ -41,6 +55,13 @@ export class ExternalMcpSearchProvider implements ContentProvider {
   private readonly maxResultsParameter?: string;
   private readonly regionParameter?: string;
   private readonly maxResults: number;
+  private readonly visitPageToolName?: string;
+  private readonly visitPageUrlParameter: string;
+  private readonly maxPagesToVisit: number;
+  private readonly pageChunkMaxChars: number;
+  private readonly pageChunkOverlapChars: number;
+  private readonly maxSelectedChunksPerPage: number;
+  private readonly maxSelectedChunksTotal: number;
   private readonly timeoutMs: number;
   private readonly toolCaller: ExternalMcpToolCaller;
 
@@ -54,6 +75,13 @@ export class ExternalMcpSearchProvider implements ContentProvider {
     this.maxResultsParameter = options.maxResultsParameter ?? "maxResults";
     this.regionParameter = options.regionParameter;
     this.maxResults = options.maxResults ?? 6;
+    this.visitPageToolName = options.visitPageToolName;
+    this.visitPageUrlParameter = options.visitPageUrlParameter ?? "url";
+    this.maxPagesToVisit = options.maxPagesToVisit ?? 0;
+    this.pageChunkMaxChars = options.pageChunkMaxChars ?? options.pageContentMaxChars ?? 1800;
+    this.pageChunkOverlapChars = options.pageChunkOverlapChars ?? 200;
+    this.maxSelectedChunksPerPage = options.maxSelectedChunksPerPage ?? 1;
+    this.maxSelectedChunksTotal = options.maxSelectedChunksTotal ?? 3;
     this.timeoutMs = options.timeoutMs ?? 10000;
     this.toolCaller = options.toolCaller ?? callExternalMcpTool;
   }
@@ -96,9 +124,10 @@ export class ExternalMcpSearchProvider implements ContentProvider {
       });
       const normalized = normalizeMcpSearchResult(result, input, this.maxResults);
       const failureMessage = normalized.length === 0 ? extractFailureMessage(result) : undefined;
+      const warnings = failureMessage ? [failureMessage] : [];
       return {
-        items: normalized,
-        warnings: failureMessage ? [failureMessage] : []
+        items: await this.enrichWithVisitedPages(normalized, warnings),
+        warnings
       };
     } catch (error) {
       return {
@@ -106,6 +135,69 @@ export class ExternalMcpSearchProvider implements ContentProvider {
         warnings: [`External MCP search failed: ${error instanceof Error ? error.message : String(error)}`]
       };
     }
+  }
+
+  private async enrichWithVisitedPages(items: ContentItem[], warnings: string[]): Promise<ContentItem[]> {
+    if (!this.visitPageToolName || this.maxPagesToVisit <= 0) {
+      return items;
+    }
+
+    const enriched: ContentItem[] = [];
+    const childEnv = buildChildEnv(this.env);
+    let selectedChunksTotal = 0;
+    for (const [index, item] of items.entries()) {
+      if (index >= this.maxPagesToVisit || !item.url) {
+        enriched.push(item);
+        continue;
+      }
+      if (selectedChunksTotal >= this.maxSelectedChunksTotal) {
+        enriched.push(item);
+        continue;
+      }
+
+      try {
+        const pageResult = await this.toolCaller({
+          command: this.command,
+          args: this.args,
+          cwd: this.cwd,
+          env: childEnv,
+          toolName: this.visitPageToolName,
+          toolArgs: {
+            [this.visitPageUrlParameter]: item.url
+          },
+          timeoutMs: this.timeoutMs
+        });
+        const pageText = extractVisitedPageText(pageResult);
+        if (!pageText) {
+          warnings.push(`External MCP page visit returned no readable text for ${item.url}.`);
+          enriched.push(item);
+          continue;
+        }
+
+        const chunks = chunkPageText(pageText, {
+          maxChars: this.pageChunkMaxChars,
+          overlapChars: this.pageChunkOverlapChars
+        });
+        const remainingChunkBudget = this.maxSelectedChunksTotal - selectedChunksTotal;
+        const selectedChunks = selectTemporaryMiddleChunks(
+          chunks,
+          Math.min(this.maxSelectedChunksPerPage, remainingChunkBudget)
+        );
+        selectedChunksTotal += selectedChunks.length;
+        if (selectedChunks.length === 0) {
+          warnings.push(`External MCP page visit produced no selectable chunks for ${item.url}.`);
+          enriched.push(item);
+          continue;
+        }
+
+        enriched.push(appendSelectedPageChunks(item, selectedChunks));
+      } catch (error) {
+        warnings.push(`External MCP page visit failed for ${item.url}: ${error instanceof Error ? error.message : String(error)}`);
+        enriched.push(item);
+      }
+    }
+
+    return enriched;
   }
 }
 
@@ -264,6 +356,129 @@ function extractTextBlocks(value: unknown): string[] {
   return content
     .map((item) => isRecord(item) && item.type === "text" && typeof item.text === "string" ? item.text : undefined)
     .filter((text): text is string => Boolean(text));
+}
+
+function extractVisitedPageText(result: unknown): string | undefined {
+  const texts = uniqueStrings(extractReadableStrings(result));
+  const combined = cleanText(texts.join("\n\n"));
+  return combined || undefined;
+}
+
+function extractReadableStrings(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(extractReadableStrings);
+  }
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const texts: string[] = [];
+  if (typeof value.text === "string") {
+    texts.push(value.text);
+  }
+  for (const key of ["markdown", "body", "article", "result", "summary"]) {
+    const candidate = value[key];
+    if (typeof candidate === "string") {
+      texts.push(candidate);
+    }
+  }
+  for (const key of ["content", "structuredContent", "toolResult", "data"]) {
+    const nested = value[key];
+    if (nested !== undefined) {
+      texts.push(...extractReadableStrings(nested));
+    }
+  }
+  return texts;
+}
+
+export function chunkPageText(text: string, options: { maxChars: number; overlapChars?: number }): PageTextChunk[] {
+  const normalized = cleanText(text);
+  if (!normalized) {
+    return [];
+  }
+
+  const maxChars = Math.max(50, options.maxChars);
+  const overlapChars = Math.max(0, Math.min(options.overlapChars ?? 0, maxChars - 1));
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < normalized.length) {
+    const hardEnd = Math.min(start + maxChars, normalized.length);
+    const end = hardEnd < normalized.length
+      ? findChunkBoundary(normalized, start, hardEnd)
+      : hardEnd;
+    const chunk = normalized.slice(start, end).trim();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    if (end >= normalized.length) {
+      break;
+    }
+    start = Math.max(end - overlapChars, start + 1);
+  }
+
+  return chunks.map((chunk, index) => ({
+    index,
+    total: chunks.length,
+    text: chunk
+  }));
+}
+
+function findChunkBoundary(text: string, start: number, hardEnd: number): number {
+  const minEnd = start + Math.floor((hardEnd - start) * 0.6);
+  const sentenceBoundary = text.lastIndexOf(". ", hardEnd);
+  if (sentenceBoundary >= minEnd) {
+    return sentenceBoundary + 1;
+  }
+
+  const whitespaceBoundary = text.lastIndexOf(" ", hardEnd);
+  if (whitespaceBoundary >= minEnd) {
+    return whitespaceBoundary;
+  }
+
+  return hardEnd;
+}
+
+export function selectTemporaryMiddleChunks(chunks: PageTextChunk[], maxChunks: number): PageTextChunk[] {
+  if (maxChunks <= 0 || chunks.length === 0) {
+    return [];
+  }
+  if (chunks.length <= maxChunks) {
+    return chunks;
+  }
+
+  const middleIndex = Math.floor(chunks.length / 2);
+  const start = clampNumber(
+    middleIndex - Math.floor(maxChunks / 2),
+    0,
+    chunks.length - maxChunks
+  );
+  return chunks.slice(start, start + maxChunks);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function appendSelectedPageChunks(item: ContentItem, chunks: PageTextChunk[]): ContentItem {
+  const chunkText = formatSelectedPageChunks(chunks);
+  return {
+    ...item,
+    summary: [item.summary, chunkText].filter(Boolean).join("\n\n"),
+    evidence: uniqueStrings([...item.evidence, ...chunks.map((chunk) => chunk.text)]),
+    sourceReliability: Math.max(item.sourceReliability ?? 0.62, 0.7)
+  };
+}
+
+function formatSelectedPageChunks(chunks: PageTextChunk[]): string {
+  const lines = chunks.map((chunk) => [
+    `[Page chunk ${chunk.index + 1}/${chunk.total}]`,
+    chunk.text
+  ].join(" "));
+  return ["Selected page chunks:", ...lines].join("\n");
 }
 
 function extractStructuredResultTexts(value: unknown): string[] {
@@ -429,6 +644,10 @@ function contentId(url: string): string {
 
 function cleanText(value: string): string {
   return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function isHttpUrl(url: string): boolean {

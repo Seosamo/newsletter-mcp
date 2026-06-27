@@ -115,6 +115,12 @@ X-MCP-Auth: <token>
 | `EXTERNAL_MCP_SEARCH_TOOL_NAME` / `NOAPI_GOOGLE_SEARCH_TOOL_NAME` | 호출할 외부 MCP 검색 tool 이름 (generic default: `search`, noapi default: `google_search`) |
 | `EXTERNAL_MCP_SEARCH_QUERY_PARAM` / `NOAPI_GOOGLE_SEARCH_QUERY_PARAM` | 검색어 파라미터 이름 (기본: `query`) |
 | `EXTERNAL_MCP_SEARCH_MAX_RESULTS_PARAM` / `NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM` | 결과 수 파라미터 이름 (generic default: `maxResults`, noapi default: `num_results`) |
+| `EXTERNAL_MCP_SEARCH_VISIT_PAGES` / `NOAPI_GOOGLE_SEARCH_VISIT_PAGES` | 검색 결과 URL 본문 fetch 여부 (noapi default: `true`) |
+| `EXTERNAL_MCP_SEARCH_MAX_PAGES_TO_VISIT` / `NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT` | 본문 fetch 대상 검색 결과 수 (기본: `3`) |
+| `EXTERNAL_MCP_SEARCH_PAGE_CHUNK_MAX_CHARS` / `NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_MAX_CHARS` | 방문 페이지 chunk 최대 길이 (기본: `1800`) |
+| `EXTERNAL_MCP_SEARCH_PAGE_CHUNK_OVERLAP_CHARS` / `NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_OVERLAP_CHARS` | 방문 페이지 chunk 간 overlap 길이 (기본: `200`) |
+| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` | 페이지별 선택 chunk 수 (기본: `1`) |
+| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` | 전체 선택 chunk 수 (기본: `3`) |
 | `ENABLE_EXTERNAL_MCP_SEARCH` / `ENABLE_NOAPI_GOOGLE_SEARCH` | 외부 MCP 검색 provider 강제 등록 |
 | `ENABLE_MOCK_PROVIDERS` | `false`면 mock provider 제외 |
 

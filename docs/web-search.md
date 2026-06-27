@@ -36,6 +36,14 @@ NOAPI_GOOGLE_SEARCH_ARGS=
 NOAPI_GOOGLE_SEARCH_TOOL_NAME=google_search
 NOAPI_GOOGLE_SEARCH_QUERY_PARAM=query
 NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM=num_results
+NOAPI_GOOGLE_SEARCH_VISIT_PAGES=true
+NOAPI_GOOGLE_SEARCH_VISIT_PAGE_TOOL_NAME=visit_page
+NOAPI_GOOGLE_SEARCH_VISIT_PAGE_URL_PARAM=url
+NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT=3
+NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_MAX_CHARS=1800
+NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_OVERLAP_CHARS=200
+NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE=1
+NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL=3
 ENABLE_NOAPI_GOOGLE_SEARCH=false
 ```
 
@@ -43,7 +51,7 @@ ENABLE_NOAPI_GOOGLE_SEARCH=false
 
 For an external MCP search provider, configure either the generic `EXTERNAL_MCP_SEARCH_*` variables or the no-API Google aliases `NOAPI_GOOGLE_SEARCH_*`. The server spawns the configured MCP server over stdio, calls one configured search tool, and normalizes returned links or structured results into `ContentItem` records. The no-API Google aliases default to `google_search` with `query` and `num_results`; generic `EXTERNAL_MCP_SEARCH_*` defaults stay `search`, `query`, and `maxResults`.
 
-Only the configured search tool is called from this server while generating newsletter drafts. The child MCP server's other tools, such as local file, email, OCR, media, or S3 tools, are not registered in this server's `tools/list`.
+Only the configured search tool is called from this server while generating newsletter drafts. For the no-API Google aliases, the server also calls `visit_page` for the top search result URLs, chunks the readable page text, temporarily selects the middle chunk from each page, and appends selected chunks under each result summary. The child MCP server's other tools, such as local file, email, OCR, media, or S3 tools, are not registered in this server's `tools/list`.
 
 ## noapi-google-search-mcp setup
 
@@ -60,11 +68,18 @@ Then enable it for this project:
 WEB_SEARCH_PROVIDER=noapi_google_search
 NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp
 NOAPI_GOOGLE_SEARCH_MAX_RESULTS=6
+NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT=3
+NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE=1
+NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL=3
 ENABLE_MOCK_PROVIDERS=false
 npm run dev
 ```
 
 `NOAPI_GOOGLE_SEARCH_TOOL_NAME`, `NOAPI_GOOGLE_SEARCH_QUERY_PARAM`, and `NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM` can be omitted for this package because this project defaults them to `google_search`, `query`, and `num_results`.
+
+`NOAPI_GOOGLE_SEARCH_VISIT_PAGES` defaults to enabled. Set it to `false` to keep URL/snippet-only behavior, or lower `NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT` if page fetching is too slow.
+
+Chunk selection is intentionally temporary: each visited page is chunked and the middle chunk is selected for now. The selector is isolated in code so the next step can replace it with relevance-based selection.
 
 To inspect real web results without mock content mixed in:
 
