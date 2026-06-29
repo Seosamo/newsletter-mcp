@@ -118,6 +118,7 @@ export type RankedNewsletterItem = {
   importanceScore: number;
   rankingReason: string;
   evidence: string[];
+  selectedEvidence?: string[];
 };
 
 export type NewsletterDraft = {

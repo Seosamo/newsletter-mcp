@@ -61,6 +61,10 @@ if (shouldEnableProvider("tavily", Boolean(process.env.TAVILY_API_KEY) || proces
     topic: parseTavilyTopic(process.env.TAVILY_SEARCH_TOPIC),
     searchDepth: parseTavilySearchDepth(process.env.TAVILY_SEARCH_DEPTH),
     includeRawContent: parseTavilyRawContent(process.env.TAVILY_INCLUDE_RAW_CONTENT),
+    pageChunkMaxChars: parseInteger(firstEnv("WEB_SEARCH_PAGE_CHUNK_MAX_CHARS", "WEB_SEARCH_PAGE_CONTENT_MAX_CHARS"), 1800),
+    pageChunkOverlapChars: parseNonNegativeInteger(process.env.WEB_SEARCH_PAGE_CHUNK_OVERLAP_CHARS, 200),
+    maxSelectedChunksPerPage: parseInteger(process.env.WEB_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE, 2),
+    maxSelectedChunksTotal: parseInteger(process.env.WEB_SEARCH_MAX_SELECTED_CHUNKS_TOTAL, 8),
     articleExtractor: new HtmlArticleExtractor({
       timeoutMs: parseInteger(process.env.HTML_EXTRACT_TIMEOUT_MS, 8000),
       maxTextChars: parseInteger(process.env.HTML_EXTRACT_MAX_TEXT_CHARS, 5000)
@@ -96,8 +100,8 @@ if (shouldEnableProvider(
       1800
     ),
     pageChunkOverlapChars: parseNonNegativeInteger(searchEnv(externalMcpSearchUsesGeneric, "PAGE_CHUNK_OVERLAP_CHARS"), 200),
-    maxSelectedChunksPerPage: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_PER_PAGE"), 1),
-    maxSelectedChunksTotal: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_TOTAL"), 3),
+    maxSelectedChunksPerPage: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_PER_PAGE"), 2),
+    maxSelectedChunksTotal: parseInteger(searchEnv(externalMcpSearchUsesGeneric, "MAX_SELECTED_CHUNKS_TOTAL"), 8),
     timeoutMs: parseInteger(firstEnv("EXTERNAL_MCP_SEARCH_TIMEOUT_MS", "WEB_SEARCH_TIMEOUT_MS"), 10000)
   }));
 }

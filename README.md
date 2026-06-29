@@ -109,6 +109,10 @@ X-MCP-Auth: <token>
 | `TAVILY_SEARCH_TOPIC` | Tavily topic: `general`, `news`, `finance` |
 | `TAVILY_SEARCH_DEPTH` | Tavily search depth: `basic`, `advanced`, `fast`, `ultra-fast` |
 | `TAVILY_INCLUDE_RAW_CONTENT` | Tavily raw content 포함 여부: `false`, `true`, `markdown`, `text` |
+| `WEB_SEARCH_PAGE_CHUNK_MAX_CHARS` | Tavily/HTML 본문 chunk 최대 길이 (기본: `1800`) |
+| `WEB_SEARCH_PAGE_CHUNK_OVERLAP_CHARS` | Tavily/HTML 본문 chunk 간 overlap 길이 (기본: `200`) |
+| `WEB_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` | Tavily/HTML 페이지별 선택 evidence chunk 수 (기본: `2`) |
+| `WEB_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` | Tavily/HTML 전체 선택 evidence chunk 수 (기본: `8`) |
 | `ENABLE_WEB_SEARCH` | `true`면 Tavily provider를 강제 등록해 설정 누락 warning 확인 |
 | `EXTERNAL_MCP_SEARCH_COMMAND` / `NOAPI_GOOGLE_SEARCH_COMMAND` | 외부 검색 MCP 서버 실행 명령 |
 | `EXTERNAL_MCP_SEARCH_ARGS` / `NOAPI_GOOGLE_SEARCH_ARGS` | 외부 검색 MCP 서버 실행 인자 |
@@ -119,8 +123,8 @@ X-MCP-Auth: <token>
 | `EXTERNAL_MCP_SEARCH_MAX_PAGES_TO_VISIT` / `NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT` | 본문 fetch 대상 검색 결과 수 (기본: `3`) |
 | `EXTERNAL_MCP_SEARCH_PAGE_CHUNK_MAX_CHARS` / `NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_MAX_CHARS` | 방문 페이지 chunk 최대 길이 (기본: `1800`) |
 | `EXTERNAL_MCP_SEARCH_PAGE_CHUNK_OVERLAP_CHARS` / `NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_OVERLAP_CHARS` | 방문 페이지 chunk 간 overlap 길이 (기본: `200`) |
-| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` | 페이지별 선택 chunk 수 (기본: `1`) |
-| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` | 전체 선택 chunk 수 (기본: `3`) |
+| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE` | 페이지별 선택 evidence chunk 수 (기본: `2`) |
+| `EXTERNAL_MCP_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` / `NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL` | 전체 선택 evidence chunk 수 (기본: `8`) |
 | `ENABLE_EXTERNAL_MCP_SEARCH` / `ENABLE_NOAPI_GOOGLE_SEARCH` | 외부 MCP 검색 provider 강제 등록 |
 | `ENABLE_MOCK_PROVIDERS` | `false`면 mock provider 제외 |
 

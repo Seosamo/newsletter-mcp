@@ -101,6 +101,7 @@ function toRankedItem(
 
   const importanceScore = Math.round(rawScore * 100);
   const date = item.eventDate ?? item.publishedAt;
+  const selectedEvidence = item.evidence.filter((evidence) => evidence.startsWith("[Page chunk "));
 
   return {
     id: item.id,
@@ -118,9 +119,11 @@ function toRankedItem(
       recencyScore,
       regionScore,
       weightScore,
-      item
+      item,
+      selectedEvidenceCount: selectedEvidence.length
     }),
-    evidence: item.evidence
+    evidence: item.evidence,
+    selectedEvidence
   };
 }
 
@@ -169,6 +172,7 @@ function buildRankingReason(input: {
   regionScore: number;
   weightScore: number;
   item: ContentItem;
+  selectedEvidenceCount: number;
 }): string {
   const reasons = [];
   if (input.interestScore >= 0.9) {
@@ -185,6 +189,9 @@ function buildRankingReason(input: {
   }
   if (input.item.type === "recommendation") {
     reasons.push("추천 섹션 적합");
+  }
+  if (input.selectedEvidenceCount > 0) {
+    reasons.push("본문 chunk에서 query 관련 근거 발견");
   }
   return reasons.length > 0 ? reasons.join(", ") : "기본 랭킹 기준에 따라 포함";
 }

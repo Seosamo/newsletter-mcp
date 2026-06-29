@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ContentSearchInput } from "../src/domain/types.js";
-import { ExternalMcpSearchProvider, selectTemporaryMiddleChunks, type ExternalMcpToolCall, type PageTextChunk } from "../src/providers/ExternalMcpSearchProvider.js";
+import { ExternalMcpSearchProvider, type ExternalMcpToolCall } from "../src/providers/ExternalMcpSearchProvider.js";
+import { selectRelevantPageChunks, type PageTextChunk } from "../src/providers/evidenceChunks.js";
 import { extractArticleFromHtml, HtmlArticleExtractor, type FetchLike } from "../src/providers/HtmlArticleExtractor.js";
 import { WebSearchProvider } from "../src/providers/WebSearchProvider.js";
 
@@ -52,6 +53,47 @@ describe("WebSearchProvider", () => {
       regions: ["Japan"]
     });
     expect(result.items[0].evidence.join(" ")).toContain("inbound travelers");
+  });
+
+  it("keeps only relevant HTML body chunks as evidence for long articles", async () => {
+    const provider = new WebSearchProvider({
+      apiKey: "test-key",
+      maxResults: 2,
+      maxPagesToExtract: 1,
+      pageChunkMaxChars: 160,
+      pageChunkOverlapChars: 0,
+      maxSelectedChunksPerPage: 1,
+      maxSelectedChunksTotal: 1,
+      fetchFn: fakeSearchFetch,
+      articleExtractor: new HtmlArticleExtractor({ fetchFn: fakeLongArticleFetch, maxTextChars: 5000 })
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(result.warnings).toEqual([]);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].summary).toContain("Japan announced changes to visa fees");
+    expect(result.items[0].summary).not.toContain("Japan visa policy details appear here");
+    expect(result.items[0].evidence.filter((item) => item.startsWith("[Page chunk "))).toHaveLength(1);
+    expect(result.items[0].evidence.join(" ")).toContain("Japan visa policy details appear here");
+    expect(result.items[0].evidence.join(" ")).not.toContain("Unrelated opening background repeats");
+  });
+
+  it("keeps snippet-based items when HTML extraction fails", async () => {
+    const provider = new WebSearchProvider({
+      apiKey: "test-key",
+      maxResults: 2,
+      maxPagesToExtract: 1,
+      fetchFn: fakeSearchFetch,
+      articleExtractor: new HtmlArticleExtractor({ fetchFn: failingArticleFetch })
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].summary).toBe("Japan announced a visa fee hike.");
+    expect(result.items[0].evidence).toEqual(["Japan announced a visa fee hike."]);
+    expect(result.warnings.some((warning) => warning.includes("HTML extraction failed"))).toBe(true);
   });
 
   it("returns a warning instead of searching when no API key is configured", async () => {
@@ -175,7 +217,7 @@ describe("WebSearchProvider", () => {
                 type: "text",
                 text: [
                   "Opening context only gives background for readers.",
-                  "Middle chunk says semiconductor demand increased exports.",
+                  "Middle chunk says Japan visa policy details changed for travelers.",
                   "Closing context only covers market reactions."
                 ].join(" ")
               }
@@ -205,22 +247,61 @@ describe("WebSearchProvider", () => {
     });
     expect(result.warnings).toEqual([]);
     expect(result.items[0].summary).toContain("Japan economy data improved this week.");
-    expect(result.items[0].summary).toContain("Selected page chunks:");
-    expect(result.items[0].summary).toContain("[Page chunk 2/3] Middle chunk says semiconductor demand increased exports.");
+    expect(result.items[0].summary).not.toContain("Selected page chunks:");
+    expect(result.items[0].summary).not.toContain("Middle chunk says Japan visa policy");
+    expect(result.items[0].evidence.join(" ")).toContain("[Page chunk ");
+    expect(result.items[0].evidence.join(" ")).toContain("Middle chunk says Japan visa policy details changed");
     expect(result.items[0].summary).not.toContain("Opening context only");
-    expect(result.items[0].evidence.join(" ")).toContain("semiconductor demand");
     expect(result.items[0].sourceReliability).toBeGreaterThanOrEqual(0.7);
   });
 
-  it("temporarily selects the middle page chunks", () => {
+  it("records a warning and keeps search result links when noapi page visits fail", async () => {
+    const provider = new ExternalMcpSearchProvider({
+      command: "noapi-google-search-mcp",
+      toolName: "google_search",
+      maxResultsParameter: "num_results",
+      maxResults: 1,
+      visitPageToolName: "visit_page",
+      maxPagesToVisit: 1,
+      toolCaller: async (call) => {
+        if (call.toolName === "visit_page") {
+          throw new Error("visit failed");
+        }
+        return {
+          structuredContent: {
+            results: [
+              {
+                title: "Japan economy update",
+                url: "https://example.com/news/economy",
+                snippet: "Japan economy data improved this week.",
+                source: "Example Search"
+              }
+            ]
+          }
+        };
+      }
+    });
+
+    const result = await provider.search(makeInput());
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      title: "Japan economy update",
+      url: "https://example.com/news/economy"
+    });
+    expect(result.warnings.some((warning) => warning.includes("page visit failed"))).toBe(true);
+  });
+
+  it("selects chunks with the strongest query relevance", () => {
     const chunks: PageTextChunk[] = Array.from({ length: 5 }, (_, index) => ({
       index,
       total: 5,
-      text: `chunk-${index}`
+      text: index === 3
+        ? "This chunk mentions Japan visa updates, Japan travel, and visa policy details."
+        : `chunk-${index} only has generic background.`
     }));
 
-    expect(selectTemporaryMiddleChunks(chunks, 1).map((chunk) => chunk.index)).toEqual([2]);
-    expect(selectTemporaryMiddleChunks(chunks, 2).map((chunk) => chunk.index)).toEqual([1, 2]);
+    expect(selectRelevantPageChunks(chunks, makeInput(), 1).map((chunk) => chunk.index)).toEqual([3]);
   });
 });
 
@@ -287,6 +368,47 @@ const fakeArticleFetch: FetchLike = async (url) => {
     }
   };
 };
+
+const fakeLongArticleFetch: FetchLike = async (url) => {
+  expect(url).toBe("https://example.com/news/japan");
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get(name: string) {
+        return name.toLocaleLowerCase() === "content-type" ? "text/html; charset=utf-8" : null;
+      }
+    },
+    async text() {
+      return `
+        <html>
+          <head>
+            <meta property="og:title" content="Japan visa fees rise" />
+            <meta name="description" content="Japan announced changes to visa fees for inbound travelers." />
+            <meta property="article:published_time" content="2026-06-22T03:45:51Z" />
+          </head>
+          <body>
+            <article>
+              <p>Unrelated opening background repeats with general tourism notes and market commentary.</p>
+              <p>More unrelated opening background repeats with general tourism notes and market commentary.</p>
+              <p>Japan visa policy details appear here. Japan visa applications and inbound traveler fees are the main update.</p>
+              <p>Closing material covers reactions, unrelated exchange rates, and broad travel context.</p>
+            </article>
+          </body>
+        </html>
+      `;
+    }
+  };
+};
+
+const failingArticleFetch: FetchLike = async () => ({
+  ok: false,
+  status: 503,
+  statusText: "Service Unavailable",
+  async text() {
+    return "";
+  }
+});
 
 function makeInput(): ContentSearchInput {
   return {

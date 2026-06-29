@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ContentItem, ContentProviderResult, ContentSearchInput } from "../domain/types.js";
 import type { ContentProvider } from "./ContentProvider.js";
+import { appendSelectedEvidenceChunks, chunkPageText, selectRelevantPageChunks } from "./evidenceChunks.js";
 import { type FetchLike, HtmlArticleExtractor } from "./HtmlArticleExtractor.js";
 
 type WebSearchProviderOptions = {
@@ -17,6 +18,10 @@ type WebSearchProviderOptions = {
   topic?: "general" | "news" | "finance";
   searchDepth?: "basic" | "advanced" | "fast" | "ultra-fast";
   includeRawContent?: boolean | "markdown" | "text";
+  pageChunkMaxChars?: number;
+  pageChunkOverlapChars?: number;
+  maxSelectedChunksPerPage?: number;
+  maxSelectedChunksTotal?: number;
 };
 
 type TavilySearchResponse = {
@@ -47,6 +52,10 @@ export class WebSearchProvider implements ContentProvider {
   private readonly topic: "general" | "news" | "finance";
   private readonly searchDepth: "basic" | "advanced" | "fast" | "ultra-fast";
   private readonly includeRawContent: boolean | "markdown" | "text";
+  private readonly pageChunkMaxChars: number;
+  private readonly pageChunkOverlapChars: number;
+  private readonly maxSelectedChunksPerPage: number;
+  private readonly maxSelectedChunksTotal: number;
 
   constructor(options: WebSearchProviderOptions = {}) {
     this.apiKey = options.apiKey;
@@ -62,6 +71,10 @@ export class WebSearchProvider implements ContentProvider {
     this.topic = options.topic ?? "news";
     this.searchDepth = options.searchDepth ?? "basic";
     this.includeRawContent = options.includeRawContent ?? false;
+    this.pageChunkMaxChars = options.pageChunkMaxChars ?? 1800;
+    this.pageChunkOverlapChars = options.pageChunkOverlapChars ?? 200;
+    this.maxSelectedChunksPerPage = options.maxSelectedChunksPerPage ?? 2;
+    this.maxSelectedChunksTotal = options.maxSelectedChunksTotal ?? 8;
   }
 
   async search(input: ContentSearchInput): Promise<ContentProviderResult> {
@@ -83,6 +96,7 @@ export class WebSearchProvider implements ContentProvider {
     const warnings: string[] = [];
     const searchResults = await this.fetchSearchResults(query, input, warnings);
     const items: ContentItem[] = [];
+    let selectedChunksTotal = 0;
 
     for (const [index, result] of searchResults.entries()) {
       if (!result.url || !result.title || !isHttpUrl(result.url)) {
@@ -106,17 +120,13 @@ export class WebSearchProvider implements ContentProvider {
         cleanText(result.content),
         extracted?.text.slice(0, 280)
       ]) ?? title;
-      const evidence = [
-        summary,
-        ...(result.raw_content ? [cleanText(result.raw_content)?.slice(0, 1200) ?? ""] : []),
-        ...(extracted?.text ? [extracted.text.slice(0, 1200)] : [])
-      ].filter(Boolean);
+      const evidence = [summary];
       const searchable = `${title} ${summary} ${extracted?.text ?? ""}`.toLocaleLowerCase();
       const matchedInterests = input.interests.filter((interest) => searchable.includes(interest.toLocaleLowerCase()));
       const matchedKeywords = input.keywords.filter((keyword) => searchable.includes(keyword.toLocaleLowerCase()));
       const matchedRegions = input.regions.filter((region) => searchable.includes(region.toLocaleLowerCase()));
 
-      items.push({
+      const item: ContentItem = {
         id: contentId(result.url),
         type: "news",
         title,
@@ -129,7 +139,25 @@ export class WebSearchProvider implements ContentProvider {
         keywords: matchedKeywords.length > 0 ? matchedKeywords : input.keywords,
         evidence,
         sourceReliability: extracted ? 0.74 : 0.68
-      });
+      };
+
+      const pageText = [result.raw_content, extracted?.text].filter(Boolean).join("\n\n");
+      if (pageText && selectedChunksTotal < this.maxSelectedChunksTotal) {
+        const chunks = chunkPageText(pageText, {
+          maxChars: this.pageChunkMaxChars,
+          overlapChars: this.pageChunkOverlapChars
+        });
+        const remainingChunkBudget = this.maxSelectedChunksTotal - selectedChunksTotal;
+        const selectedChunks = selectRelevantPageChunks(
+          chunks,
+          input,
+          Math.min(this.maxSelectedChunksPerPage, remainingChunkBudget)
+        );
+        selectedChunksTotal += selectedChunks.length;
+        items.push(appendSelectedEvidenceChunks(item, selectedChunks));
+      } else {
+        items.push(item);
+      }
     }
 
     return { items, warnings };

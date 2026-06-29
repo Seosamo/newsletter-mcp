@@ -3,6 +3,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { ContentItem, ContentProviderResult, ContentSearchInput } from "../domain/types.js";
 import type { ContentProvider } from "./ContentProvider.js";
+import {
+  appendSelectedEvidenceChunks,
+  chunkPageText,
+  selectRelevantPageChunks
+} from "./evidenceChunks.js";
 
 export type ExternalMcpToolCall = {
   command?: string;
@@ -15,12 +20,6 @@ export type ExternalMcpToolCall = {
 };
 
 export type ExternalMcpToolCaller = (call: ExternalMcpToolCall) => Promise<unknown>;
-
-export type PageTextChunk = {
-  index: number;
-  total: number;
-  text: string;
-};
 
 type ExternalMcpSearchProviderOptions = {
   command?: string;
@@ -80,8 +79,8 @@ export class ExternalMcpSearchProvider implements ContentProvider {
     this.maxPagesToVisit = options.maxPagesToVisit ?? 0;
     this.pageChunkMaxChars = options.pageChunkMaxChars ?? options.pageContentMaxChars ?? 1800;
     this.pageChunkOverlapChars = options.pageChunkOverlapChars ?? 200;
-    this.maxSelectedChunksPerPage = options.maxSelectedChunksPerPage ?? 1;
-    this.maxSelectedChunksTotal = options.maxSelectedChunksTotal ?? 3;
+    this.maxSelectedChunksPerPage = options.maxSelectedChunksPerPage ?? 2;
+    this.maxSelectedChunksTotal = options.maxSelectedChunksTotal ?? 8;
     this.timeoutMs = options.timeoutMs ?? 10000;
     this.toolCaller = options.toolCaller ?? callExternalMcpTool;
   }
@@ -126,7 +125,7 @@ export class ExternalMcpSearchProvider implements ContentProvider {
       const failureMessage = normalized.length === 0 ? extractFailureMessage(result) : undefined;
       const warnings = failureMessage ? [failureMessage] : [];
       return {
-        items: await this.enrichWithVisitedPages(normalized, warnings),
+        items: await this.enrichWithVisitedPages(normalized, warnings, input),
         warnings
       };
     } catch (error) {
@@ -137,7 +136,11 @@ export class ExternalMcpSearchProvider implements ContentProvider {
     }
   }
 
-  private async enrichWithVisitedPages(items: ContentItem[], warnings: string[]): Promise<ContentItem[]> {
+  private async enrichWithVisitedPages(
+    items: ContentItem[],
+    warnings: string[],
+    input: ContentSearchInput
+  ): Promise<ContentItem[]> {
     if (!this.visitPageToolName || this.maxPagesToVisit <= 0) {
       return items;
     }
@@ -179,8 +182,9 @@ export class ExternalMcpSearchProvider implements ContentProvider {
           overlapChars: this.pageChunkOverlapChars
         });
         const remainingChunkBudget = this.maxSelectedChunksTotal - selectedChunksTotal;
-        const selectedChunks = selectTemporaryMiddleChunks(
+        const selectedChunks = selectRelevantPageChunks(
           chunks,
+          input,
           Math.min(this.maxSelectedChunksPerPage, remainingChunkBudget)
         );
         selectedChunksTotal += selectedChunks.length;
@@ -190,7 +194,7 @@ export class ExternalMcpSearchProvider implements ContentProvider {
           continue;
         }
 
-        enriched.push(appendSelectedPageChunks(item, selectedChunks));
+        enriched.push(appendSelectedEvidenceChunks(item, selectedChunks));
       } catch (error) {
         warnings.push(`External MCP page visit failed for ${item.url}: ${error instanceof Error ? error.message : String(error)}`);
         enriched.push(item);
@@ -392,93 +396,6 @@ function extractReadableStrings(value: unknown): string[] {
     }
   }
   return texts;
-}
-
-export function chunkPageText(text: string, options: { maxChars: number; overlapChars?: number }): PageTextChunk[] {
-  const normalized = cleanText(text);
-  if (!normalized) {
-    return [];
-  }
-
-  const maxChars = Math.max(50, options.maxChars);
-  const overlapChars = Math.max(0, Math.min(options.overlapChars ?? 0, maxChars - 1));
-  const chunks: string[] = [];
-  let start = 0;
-
-  while (start < normalized.length) {
-    const hardEnd = Math.min(start + maxChars, normalized.length);
-    const end = hardEnd < normalized.length
-      ? findChunkBoundary(normalized, start, hardEnd)
-      : hardEnd;
-    const chunk = normalized.slice(start, end).trim();
-    if (chunk) {
-      chunks.push(chunk);
-    }
-    if (end >= normalized.length) {
-      break;
-    }
-    start = Math.max(end - overlapChars, start + 1);
-  }
-
-  return chunks.map((chunk, index) => ({
-    index,
-    total: chunks.length,
-    text: chunk
-  }));
-}
-
-function findChunkBoundary(text: string, start: number, hardEnd: number): number {
-  const minEnd = start + Math.floor((hardEnd - start) * 0.6);
-  const sentenceBoundary = text.lastIndexOf(". ", hardEnd);
-  if (sentenceBoundary >= minEnd) {
-    return sentenceBoundary + 1;
-  }
-
-  const whitespaceBoundary = text.lastIndexOf(" ", hardEnd);
-  if (whitespaceBoundary >= minEnd) {
-    return whitespaceBoundary;
-  }
-
-  return hardEnd;
-}
-
-export function selectTemporaryMiddleChunks(chunks: PageTextChunk[], maxChunks: number): PageTextChunk[] {
-  if (maxChunks <= 0 || chunks.length === 0) {
-    return [];
-  }
-  if (chunks.length <= maxChunks) {
-    return chunks;
-  }
-
-  const middleIndex = Math.floor(chunks.length / 2);
-  const start = clampNumber(
-    middleIndex - Math.floor(maxChunks / 2),
-    0,
-    chunks.length - maxChunks
-  );
-  return chunks.slice(start, start + maxChunks);
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
-
-function appendSelectedPageChunks(item: ContentItem, chunks: PageTextChunk[]): ContentItem {
-  const chunkText = formatSelectedPageChunks(chunks);
-  return {
-    ...item,
-    summary: [item.summary, chunkText].filter(Boolean).join("\n\n"),
-    evidence: uniqueStrings([...item.evidence, ...chunks.map((chunk) => chunk.text)]),
-    sourceReliability: Math.max(item.sourceReliability ?? 0.62, 0.7)
-  };
-}
-
-function formatSelectedPageChunks(chunks: PageTextChunk[]): string {
-  const lines = chunks.map((chunk) => [
-    `[Page chunk ${chunk.index + 1}/${chunk.total}]`,
-    chunk.text
-  ].join(" "));
-  return ["Selected page chunks:", ...lines].join("\n");
 }
 
 function extractStructuredResultTexts(value: unknown): string[] {

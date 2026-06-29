@@ -84,7 +84,10 @@ export class NewsletterDraftGenerator {
       deduplicateItems(filterExcludedKeywords(collected, profile.excludedKeywords)),
       period
     );
-    const ranked = rankItems(filtered, interests, regions, matchedSettings, period);
+    const ranked = capSelectedEvidenceBudget(
+      rankItems(filtered, interests, regions, matchedSettings, period),
+      8
+    );
     const sections = mapSections(ranked, template, formatPreference);
     const selectedItems = Object.values(sections).flat();
 
@@ -128,6 +131,37 @@ export class NewsletterDraftGenerator {
 
     throw new Error(`Newsletter template not found: ${templateId}`);
   }
+}
+
+function capSelectedEvidenceBudget(items: RankedNewsletterItem[], maxSelectedEvidence: number): RankedNewsletterItem[] {
+  let remaining = maxSelectedEvidence;
+  return items.map((item) => {
+    const selectedEvidence = item.selectedEvidence ?? [];
+    if (selectedEvidence.length === 0) {
+      return item;
+    }
+
+    const keptSelectedEvidence = selectedEvidence.slice(0, Math.max(remaining, 0));
+    remaining -= keptSelectedEvidence.length;
+    const nonPageEvidence = item.evidence.filter((evidence) => !evidence.startsWith("[Page chunk "));
+
+    return {
+      ...item,
+      selectedEvidence: keptSelectedEvidence,
+      evidence: [...nonPageEvidence, ...keptSelectedEvidence],
+      rankingReason: keptSelectedEvidence.length > 0
+        ? item.rankingReason
+        : removeRankingReason(item.rankingReason, "본문 chunk에서 query 관련 근거 발견")
+    };
+  });
+}
+
+function removeRankingReason(reason: string, target: string): string {
+  const keptReasons = reason
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item && item !== target);
+  return keptReasons.length > 0 ? keptReasons.join(", ") : "기본 랭킹 기준에 따라 포함";
 }
 
 function normalizeList(values: string[]): string[] {

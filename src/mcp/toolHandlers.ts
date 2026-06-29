@@ -290,15 +290,36 @@ function formatDraftSection(sectionId: string, items: RankedNewsletterItem[]): s
   const itemLines = items.map((item, i) => {
     const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : item.title;
     const meta = [item.sourceName, item.date].filter(Boolean).join(" · ");
-    return [`${i + 1}. **${link}** (score: ${item.importanceScore})`, indentBlock(item.summary, "   "), meta ? `   _${meta}_` : ""]
+    return [
+      `${i + 1}. **${link}** (score: ${item.importanceScore})`,
+      indentBlock(item.summary, "   "),
+      formatSelectedEvidence(item.selectedEvidence ?? []),
+      meta ? `   _${meta}_` : "",
+      `   _Reason: ${item.rankingReason}_`
+    ]
       .filter(Boolean)
       .join("\n");
   });
   return [`### ${title}`, "", ...itemLines].join("\n");
 }
 
+function formatSelectedEvidence(evidence: string[]): string {
+  if (evidence.length === 0) {
+    return "";
+  }
+  const lines = evidence
+    .slice(0, 2)
+    .map((item) => `   - ${truncateText(item, 700)}`);
+  return ["   **Evidence:**", ...lines].join("\n");
+}
+
 function indentBlock(text: string, prefix: string): string {
   return text.split(/\r?\n/).map((line) => line ? `${prefix}${line}` : "").join("\n");
+}
+
+function truncateText(text: string, maxChars: number): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > maxChars ? `${normalized.slice(0, maxChars - 1).trim()}…` : normalized;
 }
 
 function formatDraftSources(sources: SourceRef[]): string {

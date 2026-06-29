@@ -184,6 +184,66 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(draft.draftId).toMatch(/^draft_/);
   });
 
+  it("caps selected page evidence chunks across a generated draft", async () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({
+      ...makeContentItem(`chunked-${index}`, `Japan visa item ${index}`, `https://example.com/item-${index}`),
+      evidence: [
+        `Japan visa item ${index} snippet`,
+        `[Page chunk 1/1] Japan visa body evidence ${index}`
+      ]
+    }));
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("evidence-budget", {
+          interests: ["Japan"],
+          regions: ["Japan"],
+          formatPreference: {
+            length: "medium",
+            includeCommentary: false,
+            includeRecommendations: false
+          }
+        })
+      ],
+      templates: [
+        {
+          templateId: "evidence_budget",
+          name: "Evidence Budget",
+          sections: [
+            { id: "top_stories", title: "오늘 주요 소식", description: "주요 소식", maxItems: 12 },
+            { id: "key_dates", title: "주요 일정", description: "일정", maxItems: 5 },
+            { id: "deep_dive", title: "상세 해설", description: "상세 해설", maxItems: 0 },
+            { id: "recommendations", title: "관련 행사/장소/도서 추천", description: "추천", maxItems: 0 }
+          ]
+        }
+      ],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider(items)],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    const draft = await generator.generate({
+      userId: "evidence-budget",
+      userMessage: "Japan visa newsletter",
+      templateId: "evidence_budget",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+    const selectedEvidence = Object.values(draft.sections)
+      .flat()
+      .flatMap((item) => item.selectedEvidence ?? []);
+
+    expect(draft.sections.top_stories).toHaveLength(12);
+    expect(selectedEvidence).toHaveLength(8);
+    expect(draft.sections.top_stories[0].rankingReason).toContain("본문 chunk에서 query 관련 근거 발견");
+    expect(draft.sections.top_stories[8].selectedEvidence).toEqual([]);
+    expect(draft.sections.top_stories[8].rankingReason).not.toContain("본문 chunk에서 query 관련 근거 발견");
+  });
+
   it("accepts only MCP protocol versions in the required supported range", () => {
     expect(SUPPORTED_PROTOCOL_VERSIONS).toEqual(["2025-03-26", "2025-06-18", "2025-11-25"]);
     expect(isSupportedProtocolVersion("2025-03-26")).toBe(true);
