@@ -58,6 +58,18 @@ export class JsonFileStorage implements NewsletterStorage {
     return templates.find((template) => template.templateId === templateId) ?? null;
   }
 
+  async upsertTemplate(template: NewsletterTemplate): Promise<void> {
+    const data = await this.readJson<TemplatesFile>("templates.json", { templates: [] });
+    const targetId = template.templateId.trim();
+    const index = data.templates.findIndex((existing) => existing.templateId === targetId);
+    if (index >= 0) {
+      data.templates[index] = template;
+    } else {
+      data.templates.push(template);
+    }
+    await this.writeJson("templates.json", data);
+  }
+
   async listUserCategorySettings(userId: string): Promise<InterestTagSetting[]> {
     const data = await this.readJson<CategorySettingsFile>("categorySettings.json", { settings: {} });
     return data.settings[userId] ?? [];

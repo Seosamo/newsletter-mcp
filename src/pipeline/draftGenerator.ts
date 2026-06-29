@@ -5,6 +5,7 @@ import type {
   GenerateNewsletterDraftInput,
   InterestTagSetting,
   NewsletterDraft,
+  NewsletterEditorInstructions,
   NewsletterFormatPreference,
   NewsletterHistoryEntry,
   NewsletterSectionId,
@@ -109,6 +110,7 @@ export class NewsletterDraftGenerator {
         templateId,
         generatedAt
       },
+      editorInstructions: buildEditorInstructions(template, tone, formatPreference),
       sections,
       sources: buildSourceRefs(selectedItems),
       warnings
@@ -200,6 +202,54 @@ function mapSections(
       ? takeBySection(ranked.filter((item) => item.type === "recommendation"), template, "recommendations")
       : []
   };
+}
+
+function buildEditorInstructions(
+  template: NewsletterTemplate,
+  tone: UserProfile["preferredTone"],
+  formatPreference: NewsletterFormatPreference
+): NewsletterEditorInstructions {
+  return {
+    outputLanguage: template.outputLanguage ?? "ko",
+    outputFormat: template.outputFormat ?? "markdown",
+    tone,
+    length: formatPreference.length,
+    audience: template.audience,
+    sectionOrder: template.sections.map((section) => section.id),
+    layoutGuide: template.layoutGuide ?? template.sections.map((section) => section.title),
+    styleGuide: [
+      ...defaultStyleGuide(formatPreference),
+      ...(template.styleGuide ?? [])
+    ],
+    sectionInstructions: {
+      ...Object.fromEntries(template.sections.map((section) => [section.id, section.description])),
+      ...(template.sectionInstructions ?? {})
+    },
+    sourcePolicy: [
+      "서버가 제공한 item, evidence, sourceUrl, date만 근거로 사용한다.",
+      "각 주요 소식에는 가능하면 출처 링크를 유지한다.",
+      "evidence에 없는 사실, 날짜, 링크, 수치를 새로 만들지 않는다.",
+      ...(template.sourcePolicy ?? [])
+    ],
+    forbiddenRules: [
+      "[Page chunk x/y] 라벨은 최종 뉴스레터에 그대로 노출하지 않는다.",
+      "확인되지 않은 사실을 추측으로 보강하지 않는다.",
+      "빈 섹션을 억지로 채우지 않는다.",
+      ...(template.forbiddenRules ?? [])
+    ]
+  };
+}
+
+function defaultStyleGuide(formatPreference: NewsletterFormatPreference): string[] {
+  const lengthRule = formatPreference.length === "short"
+    ? "짧고 압축적으로 작성한다."
+    : formatPreference.length === "long"
+      ? "맥락과 의미를 충분히 설명하되 근거 없는 확장은 하지 않는다."
+      : "핵심 맥락을 간결하게 설명한다.";
+  return [
+    "최종 뉴스레터는 독자가 바로 읽을 수 있는 완성된 문장으로 작성한다.",
+    lengthRule
+  ];
 }
 
 function takeBySection(

@@ -12,6 +12,7 @@ export interface NewsletterStorage {
 
   listTemplates(): Promise<NewsletterTemplate[]>;
   getTemplate(templateId: string): Promise<NewsletterTemplate | null>;
+  upsertTemplate(template: NewsletterTemplate): Promise<void>;
 
   listUserCategorySettings(userId: string): Promise<InterestTagSetting[]>;
   upsertUserCategorySetting(userId: string, setting: InterestTagSetting): Promise<void>;

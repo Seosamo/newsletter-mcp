@@ -30,6 +30,7 @@ MCP 서버는 **툴(Tool)** 목록을 클라이언트에 노출하고, 클라이
 | `update_user_preferences` | 채팅에서 파싱된 선호도 업데이트 | |
 | `list_newsletter_templates` | 사용 가능한 템플릿 목록 조회 | ✓ |
 | `get_newsletter_template` | 특정 템플릿 조회 | ✓ |
+| `upsert_newsletter_template` | 채팅에서 구조화한 뉴스레터 작성 템플릿 저장/갱신 | |
 | `list_user_category_settings` | 사용자 관심 태그 설정 목록 조회 | ✓ |
 | `upsert_user_category_setting` | 관심 태그 메타데이터 생성/교체 | |
 | `list_newsletter_history` | 최근 생성된 뉴스레터 초안 이력 조회 | ✓ |
@@ -38,6 +39,8 @@ MCP 서버는 **툴(Tool)** 목록을 클라이언트에 노출하고, 클라이
 
 > 채팅 파싱(관심사 추출 등)은 LLM 클라이언트 측에서 처리한 뒤 툴을 호출합니다.
 > 서버는 LLM API를 직접 호출하지 않고, 근거 데이터와 Markdown 초안을 반환합니다.
+
+사용자 정의 뉴스레터 포맷은 `upsert_newsletter_template`로 저장하고, 생성 시 `generate_newsletter_draft`의 `templateId`로 선택합니다. 생성 결과에는 `AI Editing Instructions`가 함께 포함되어 LLM 클라이언트가 저장된 템플릿 규칙대로 최종 뉴스레터를 작성할 수 있습니다.
 
 ---
 
@@ -149,6 +152,7 @@ npm test
 
 - 사용자 프로파일 및 카테고리 설정 저장/조회
 - 채팅 태그 기반 구조화 초안 생성 (섹션 검증)
+- 사용자 정의 뉴스레터 템플릿 저장/조회 및 AI 편집 지시문 반영
 - 프로파일 기본값 폴백 (관심사·지역·톤·주간 기간)
 - 제외 키워드 필터링 및 중복 URL 제거
 - RSS 수집 실패 시 graceful 처리

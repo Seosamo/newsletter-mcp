@@ -53,7 +53,30 @@ export type NewsletterSectionTemplate = {
 export type NewsletterTemplate = {
   templateId: string;
   name: string;
+  description?: string;
+  outputLanguage?: string;
+  outputFormat?: string;
+  audience?: string;
+  styleGuide?: string[];
+  layoutGuide?: string[];
+  sourcePolicy?: string[];
+  forbiddenRules?: string[];
+  sectionInstructions?: Partial<Record<NewsletterSectionId, string>>;
   sections: NewsletterSectionTemplate[];
+};
+
+export type NewsletterEditorInstructions = {
+  outputLanguage: string;
+  outputFormat: string;
+  tone: NewsletterTone;
+  length: NewsletterLength;
+  audience?: string;
+  sectionOrder: NewsletterSectionId[];
+  layoutGuide: string[];
+  styleGuide: string[];
+  sectionInstructions: Partial<Record<NewsletterSectionId, string>>;
+  sourcePolicy: string[];
+  forbiddenRules: string[];
 };
 
 export type ContentType = "news" | "event" | "recommendation";
@@ -134,6 +157,7 @@ export type NewsletterDraft = {
     templateId: string;
     generatedAt: string;
   };
+  editorInstructions: NewsletterEditorInstructions;
   sections: Record<NewsletterSectionId, RankedNewsletterItem[]>;
   sources: SourceRef[];
   warnings: string[];

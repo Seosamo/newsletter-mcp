@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ApiConnectorRecommendation } from "../catalog/types.js";
 import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
 import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
-import type { InterestTagSetting, NewsletterDraft, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
+import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 
@@ -61,6 +61,16 @@ export function listTools() {
         inputSchema: objectSchema({
           templateId: stringSchema("Template id.")
         }, ["templateId"])
+      }),
+      toolDefinition({
+        name: "upsert_newsletter_template",
+        description: `Creates or updates a reusable newsletter writing template in ${SERVICE_NAME_FIXED}.`,
+        annotations: writeAnnotation("Upsert Newsletter Template"),
+        inputSchema: objectSchema({
+          templateId: stringSchema("Template id."),
+          name: stringSchema("Template display name."),
+          template: newsletterTemplateInputSchema()
+        }, ["templateId", "name", "template"])
       }),
       toolDefinition({
         name: "list_user_category_settings",
@@ -179,6 +189,11 @@ export async function callTool(
       }
       return textResult(formatTemplate(template));
     }
+    case "upsert_newsletter_template": {
+      const input = upsertNewsletterTemplateSchema.parse(args);
+      await storage.upsertTemplate(input);
+      return textResult(`## Newsletter Template Updated\n\n${formatTemplate(input)}`);
+    }
     case "list_user_category_settings": {
       const input = userIdSchema.parse(args);
       const settings = await storage.listUserCategorySettings(input.userId);
@@ -247,7 +262,42 @@ function formatTemplate(template: NewsletterTemplate): string {
   const sections = template.sections
     .map(s => `  - **${s.id}** (${s.title}): max ${s.maxItems} items`)
     .join("\n");
-  return [`### ${template.name} (\`${template.templateId}\`)`, "", "**Sections:**", sections].join("\n");
+  const details = [
+    template.description ? `- **Description**: ${template.description}` : "",
+    template.outputLanguage ? `- **Output Language**: ${template.outputLanguage}` : "",
+    template.outputFormat ? `- **Output Format**: ${template.outputFormat}` : "",
+    template.audience ? `- **Audience**: ${template.audience}` : "",
+    formatList("Style Guide", template.styleGuide),
+    formatList("Layout Guide", template.layoutGuide),
+    formatList("Source Policy", template.sourcePolicy),
+    formatList("Forbidden Rules", template.forbiddenRules),
+    formatSectionInstructions(template.sectionInstructions)
+  ].filter(Boolean);
+  return [
+    `### ${template.name} (\`${template.templateId}\`)`,
+    "",
+    ...details,
+    details.length > 0 ? "" : "",
+    "**Sections:**",
+    sections
+  ].join("\n");
+}
+
+function formatList(title: string, values: string[] | undefined): string {
+  if (!values || values.length === 0) {
+    return "";
+  }
+  return [`- **${title}**:`, ...values.map((value) => `  - ${value}`)].join("\n");
+}
+
+function formatSectionInstructions(instructions: Partial<Record<NewsletterSectionId, string>> | undefined): string {
+  if (!instructions || Object.keys(instructions).length === 0) {
+    return "";
+  }
+  return [
+    "- **Section Instructions**:",
+    ...Object.entries(instructions).map(([sectionId, instruction]) => `  - **${sectionId}**: ${instruction}`)
+  ].join("\n");
 }
 
 function formatCategorySetting(setting: InterestTagSetting): string {
@@ -343,7 +393,31 @@ function formatDraft(draft: NewsletterDraft): string {
     .map(id => formatDraftSection(id, sections[id]))
     .join("\n\n---\n\n");
   const sourcesText = formatDraftSources(sources);
-  return [header, "---", sectionsText, sourcesText].filter(Boolean).join("\n\n") + formatWarnings(warnings);
+  return [
+    header,
+    formatEditorInstructions(draft.editorInstructions),
+    "---",
+    "## Draft Data",
+    sectionsText,
+    sourcesText
+  ].filter(Boolean).join("\n\n") + formatWarnings(warnings);
+}
+
+function formatEditorInstructions(instructions: NewsletterEditorInstructions): string {
+  return [
+    "## AI Editing Instructions",
+    "",
+    `- **Output Language**: ${instructions.outputLanguage}`,
+    `- **Output Format**: ${instructions.outputFormat}`,
+    `- **Tone**: ${instructions.tone}`,
+    `- **Length**: ${instructions.length}`,
+    instructions.audience ? `- **Audience**: ${instructions.audience}` : "",
+    formatList("Layout Guide", instructions.layoutGuide),
+    formatList("Style Guide", instructions.styleGuide),
+    formatSectionInstructions(instructions.sectionInstructions),
+    formatList("Source Policy", instructions.sourcePolicy),
+    formatList("Forbidden Rules", instructions.forbiddenRules)
+  ].filter(Boolean).join("\n");
 }
 
 function formatApiConnectorRecommendations(userId: string, recommendations: ApiConnectorRecommendation[]): string {
@@ -392,6 +466,47 @@ const userIdSchema = z.object({
 const templateIdSchema = z.object({
   templateId: z.string().min(1)
 });
+
+const newsletterSectionIdSchema = z.enum(["top_stories", "key_dates", "deep_dive", "recommendations"]);
+
+const newsletterSectionTemplateSchema = z.object({
+  id: newsletterSectionIdSchema,
+  title: z.string().min(1),
+  description: z.string().min(1),
+  maxItems: z.number().int().positive().optional()
+});
+
+const newsletterTemplatePayloadSchema = z.object({
+  description: z.string().optional(),
+  outputLanguage: z.string().min(1).default("ko"),
+  outputFormat: z.string().min(1).default("markdown"),
+  audience: z.string().optional(),
+  styleGuide: z.array(z.string()).default([]),
+  layoutGuide: z.array(z.string()).default([]),
+  sourcePolicy: z.array(z.string()).default([]),
+  forbiddenRules: z.array(z.string()).default([]),
+  sectionInstructions: z.record(newsletterSectionIdSchema, z.string()).default({}),
+  sections: z.array(newsletterSectionTemplateSchema).optional()
+});
+
+const upsertNewsletterTemplateSchema = z.object({
+  templateId: z.string().min(1),
+  name: z.string().min(1),
+  template: newsletterTemplatePayloadSchema
+}).transform(({ templateId, name, template }): NewsletterTemplate => ({
+  templateId: templateId.trim(),
+  name: name.trim(),
+  description: template.description?.trim(),
+  outputLanguage: template.outputLanguage.trim(),
+  outputFormat: template.outputFormat.trim(),
+  audience: template.audience?.trim(),
+  styleGuide: normalizeList(template.styleGuide),
+  layoutGuide: normalizeList(template.layoutGuide),
+  sourcePolicy: normalizeList(template.sourcePolicy),
+  forbiddenRules: normalizeList(template.forbiddenRules),
+  sectionInstructions: normalizeSectionInstructions(template.sectionInstructions),
+  sections: mergeTemplateSections(template.sections)
+}));
 
 const schedulePatchSchema = z.object({
   frequency: z.enum(["daily", "weekly", "monthly"]).optional(),
@@ -507,6 +622,47 @@ function arrayStringSchema(description: string, _optional = false) {
   };
 }
 
+function newsletterTemplateInputSchema() {
+  return {
+    type: "object",
+    description: "Structured newsletter writing template parsed by the LLM client.",
+    additionalProperties: false,
+    properties: {
+      description: stringSchema("Template description.", true),
+      outputLanguage: stringSchema("Output language, for example ko.", true),
+      outputFormat: stringSchema("Output format, for example markdown.", true),
+      audience: stringSchema("Target reader audience.", true),
+      styleGuide: arrayStringSchema("Writing style rules.", true),
+      layoutGuide: arrayStringSchema("Desired newsletter layout order.", true),
+      sourcePolicy: arrayStringSchema("Source and citation rules.", true),
+      forbiddenRules: arrayStringSchema("Rules the final editor must not violate.", true),
+      sectionInstructions: {
+        type: "object",
+        description: "Per-section writing instructions keyed by top_stories, key_dates, deep_dive, recommendations.",
+        additionalProperties: { type: "string" }
+      },
+      sections: {
+        type: "array",
+        description: "Optional section limits and labels. Missing sections fall back to defaults.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            id: {
+              type: "string",
+              enum: ["top_stories", "key_dates", "deep_dive", "recommendations"]
+            },
+            title: { type: "string" },
+            description: { type: "string" },
+            maxItems: { type: "number" }
+          },
+          required: ["id", "title", "description"]
+        }
+      }
+    }
+  };
+}
+
 function objectSchema(properties: Record<string, unknown>, required: string[]) {
   return {
     type: "object",
@@ -553,4 +709,38 @@ function openWorldWriteAnnotation(title: string): ToolAnnotation {
     openWorldHint: true,
     idempotentHint: false
   };
+}
+
+function mergeTemplateSections(overrides: NewsletterSectionTemplate[] | undefined): NewsletterSectionTemplate[] {
+  const byId = new Map<NewsletterSectionId, NewsletterSectionTemplate>(
+    defaultTemplateSections().map((section) => [section.id, section])
+  );
+  for (const override of overrides ?? []) {
+    byId.set(override.id, {
+      id: override.id,
+      title: override.title.trim(),
+      description: override.description.trim(),
+      maxItems: override.maxItems
+    });
+  }
+  return defaultTemplateSections().map((section) => byId.get(section.id) ?? section);
+}
+
+function defaultTemplateSections(): NewsletterSectionTemplate[] {
+  return [
+    { id: "top_stories", title: "오늘 주요 소식", description: "요청 기간 안에서 가장 중요한 소식 후보", maxItems: 5 },
+    { id: "key_dates", title: "주요 일정", description: "다가오는 일정, 행사, 마감일 후보", maxItems: 5 },
+    { id: "deep_dive", title: "상세 해설", description: "LLM이 자세히 풀어쓸 만한 핵심 주제 후보", maxItems: 2 },
+    { id: "recommendations", title: "관련 행사/장소/도서 추천", description: "사용자 취향과 연결되는 추천 콘텐츠 후보", maxItems: 5 }
+  ];
+}
+
+function normalizeSectionInstructions(
+  instructions: Partial<Record<NewsletterSectionId, string>>
+): Partial<Record<NewsletterSectionId, string>> {
+  return Object.fromEntries(
+    Object.entries(instructions)
+      .map(([key, value]) => [key, value.trim()])
+      .filter((entry): entry is [NewsletterSectionId, string] => Boolean(entry[1]))
+  );
 }

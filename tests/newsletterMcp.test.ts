@@ -10,9 +10,10 @@ import type {
   NewsletterTemplate,
   UserProfile
 } from "../src/domain/types.js";
+import { ApiCatalogSelector } from "../src/catalog/ApiCatalogSelector.js";
 import { NewsletterDraftGenerator } from "../src/pipeline/draftGenerator.js";
 import { isSupportedProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from "../src/mcp/protocolVersion.js";
-import { listTools } from "../src/mcp/toolHandlers.js";
+import { callTool, listTools } from "../src/mcp/toolHandlers.js";
 import type { ContentProvider } from "../src/providers/ContentProvider.js";
 import {
   MockEventProvider,
@@ -86,6 +87,13 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(draft.sections.deep_dive.length).toBeGreaterThan(0);
     expect(draft.sections.recommendations.length).toBeGreaterThan(0);
     expect(draft.sources.length).toBeGreaterThan(0);
+    expect(draft.editorInstructions).toMatchObject({
+      outputLanguage: "ko",
+      outputFormat: "markdown",
+      tone: "friendly",
+      length: "medium"
+    });
+    expect(draft.editorInstructions.sourcePolicy.join(" ")).toContain("evidence에 없는 사실");
 
     const history = await storage.listHistory("default");
     expect(history).toHaveLength(1);
@@ -242,6 +250,134 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(draft.sections.top_stories[0].rankingReason).toContain("본문 chunk에서 query 관련 근거 발견");
     expect(draft.sections.top_stories[8].selectedEvidence).toEqual([]);
     expect(draft.sections.top_stories[8].rankingReason).not.toContain("본문 chunk에서 query 관련 근거 발견");
+  });
+
+  it("upserts and retrieves custom newsletter templates through MCP tools", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-06-22T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    const updateResult = await callTool(storage, generator, selector, "upsert_newsletter_template", {
+      templateId: "my_weekly_brief",
+      name: "My Weekly Brief",
+      template: {
+        description: "짧고 읽기 쉬운 주간 브리프",
+        outputLanguage: "ko",
+        outputFormat: "markdown",
+        audience: "일본 애니메이션과 문화 트렌드에 관심 있는 일반 독자",
+        styleGuide: ["친근하지만 과장하지 않는다.", "문장은 짧게 쓴다."],
+        layoutGuide: ["제목", "3줄 요약", "오늘 주요 소식", "출처"],
+        sourcePolicy: ["각 주요 소식에는 출처 링크를 유지한다."],
+        forbiddenRules: ["Page chunk 라벨을 최종 뉴스레터에 노출하지 않는다."],
+        sectionInstructions: {
+          top_stories: "중요도 순으로 최대 5개를 쓴다."
+        }
+      }
+    });
+    const saved = await storage.getTemplate("my_weekly_brief");
+    const getResult = await callTool(storage, generator, selector, "get_newsletter_template", {
+      templateId: "my_weekly_brief"
+    });
+
+    expect(updateResult.content[0].text).toContain("Newsletter Template Updated");
+    expect(saved).toMatchObject({
+      templateId: "my_weekly_brief",
+      name: "My Weekly Brief",
+      audience: "일본 애니메이션과 문화 트렌드에 관심 있는 일반 독자",
+      styleGuide: ["친근하지만 과장하지 않는다.", "문장은 짧게 쓴다."],
+      sectionInstructions: {
+        top_stories: "중요도 순으로 최대 5개를 쓴다."
+      }
+    });
+    expect(saved?.sections.map((section) => section.id)).toEqual([
+      "top_stories",
+      "key_dates",
+      "deep_dive",
+      "recommendations"
+    ]);
+    expect(getResult.content[0].text).toContain("Style Guide");
+    expect(getResult.content[0].text).toContain("중요도 순으로 최대 5개를 쓴다.");
+  });
+
+  it("uses custom template rules in AI editing instructions for generated drafts", async () => {
+    const customTemplate: NewsletterTemplate = {
+      templateId: "my_weekly_brief",
+      name: "My Weekly Brief",
+      outputLanguage: "ko",
+      outputFormat: "markdown",
+      audience: "일본 애니메이션과 문화 트렌드에 관심 있는 일반 독자",
+      styleGuide: ["친근하지만 과장하지 않는다.", "각 항목은 핵심 맥락을 2문장 이내로 설명한다."],
+      layoutGuide: ["제목", "3줄 요약", "오늘 주요 소식", "출처"],
+      sourcePolicy: ["각 주요 소식에는 출처 링크를 유지한다."],
+      forbiddenRules: ["Page chunk 라벨을 최종 뉴스레터에 노출하지 않는다."],
+      sectionInstructions: {
+        top_stories: "중요도 순으로 최대 5개를 쓴다."
+      },
+      sections: [
+        { id: "top_stories", title: "오늘 주요 소식", description: "주요 소식", maxItems: 5 },
+        { id: "key_dates", title: "주요 일정", description: "일정", maxItems: 5 },
+        { id: "deep_dive", title: "상세 해설", description: "상세 해설", maxItems: 2 },
+        { id: "recommendations", title: "관련 행사/장소/도서 추천", description: "추천", maxItems: 5 }
+      ]
+    };
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("template-user", {
+          interests: ["Japan"],
+          regions: ["Japan"],
+          preferredTone: "analytical",
+          formatPreference: {
+            length: "short",
+            includeCommentary: true,
+            includeRecommendations: true
+          }
+        })
+      ],
+      templates: [customTemplate],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider([makeContentItem("japan", "Japan anime policy update", "https://example.com/japan")])],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+    const selector = new ApiCatalogSelector([]);
+
+    const draft = await generator.generate({
+      userId: "template-user",
+      userMessage: "Japan newsletter",
+      templateId: "my_weekly_brief",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+    const toolResult = await callTool(storage, generator, selector, "generate_newsletter_draft", {
+      userId: "template-user",
+      userMessage: "Japan newsletter",
+      templateId: "my_weekly_brief",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+
+    expect(draft.editorInstructions).toMatchObject({
+      outputLanguage: "ko",
+      outputFormat: "markdown",
+      tone: "analytical",
+      length: "short",
+      audience: "일본 애니메이션과 문화 트렌드에 관심 있는 일반 독자"
+    });
+    expect(draft.editorInstructions.styleGuide).toContain("친근하지만 과장하지 않는다.");
+    expect(draft.editorInstructions.layoutGuide).toEqual(["제목", "3줄 요약", "오늘 주요 소식", "출처"]);
+    expect(draft.editorInstructions.sectionInstructions.top_stories).toBe("중요도 순으로 최대 5개를 쓴다.");
+    expect(toolResult.content[0].text).toContain("## AI Editing Instructions");
+    expect(toolResult.content[0].text).toContain("친근하지만 과장하지 않는다.");
+    expect(toolResult.content[0].text).toContain("## Draft Data");
   });
 
   it("accepts only MCP protocol versions in the required supported range", () => {
