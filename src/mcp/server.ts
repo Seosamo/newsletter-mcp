@@ -142,7 +142,20 @@ function createServer(
 
   server.setRequestHandler(ListToolsRequestSchema, async () => listTools());
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    return callTool(storage, generator, apiCatalogSelector, request.params.name, request.params.arguments ?? {});
+    try {
+      return await callTool(storage, generator, apiCatalogSelector, request.params.name, request.params.arguments ?? {});
+    } catch (error) {
+      console.error(`Tool call failed: ${request.params.name}`, error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatToolError(request.params.name, error)
+          }
+        ],
+        isError: true
+      };
+    }
   });
   server.setRequestHandler(ListResourcesRequestSchema, async () => listResources(storage));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listResourceTemplates());
@@ -151,6 +164,18 @@ function createServer(
   });
 
   return server;
+}
+
+function formatToolError(toolName: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return [
+    "## Tool Call Failed",
+    "",
+    `- **Tool**: \`${toolName}\``,
+    `- **Error**: ${message || "Unknown error"}`,
+    "",
+    "Check the server logs for stack trace details."
+  ].join("\n");
 }
 
 function validateRequest(req: Request, res: Response, options: HttpMcpServerOptions): boolean {
