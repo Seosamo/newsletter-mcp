@@ -8,6 +8,7 @@ import type {
   NewsletterEditorInstructions,
   NewsletterFormatPreference,
   NewsletterHistoryEntry,
+  NewsletterOutline,
   NewsletterSectionId,
   NewsletterTemplate,
   RankedNewsletterItem,
@@ -97,9 +98,10 @@ export class NewsletterDraftGenerator {
     }
 
     const generatedAt = now.toISOString();
+    const title = buildTitle(interests);
     const draft: NewsletterDraft = {
       draftId: `draft_${randomUUID()}`,
-      title: buildTitle(interests),
+      title,
       metadata: {
         userId: input.userId,
         userMessage: input.userMessage,
@@ -111,6 +113,7 @@ export class NewsletterDraftGenerator {
         generatedAt
       },
       editorInstructions: buildEditorInstructions(template, tone, formatPreference),
+      outline: buildNewsletterOutline(title, sections),
       sections,
       sources: buildSourceRefs(selectedItems),
       warnings
@@ -204,6 +207,58 @@ function mapSections(
   };
 }
 
+function buildNewsletterOutline(
+  title: string,
+  sections: Record<NewsletterSectionId, RankedNewsletterItem[]>
+): NewsletterOutline {
+  const groups = new Map<string, RankedNewsletterItem[]>();
+  const seenItemIds = new Set<string>();
+
+  for (const sectionId of sectionOrder()) {
+    for (const item of sections[sectionId]) {
+      if (seenItemIds.has(item.id)) {
+        continue;
+      }
+      seenItemIds.add(item.id);
+      const label = outlineLabel(item, sectionId);
+      groups.set(label, [...(groups.get(label) ?? []), item]);
+    }
+  }
+
+  return {
+    title: `${title} 목차`,
+    leadPrefix: "❙",
+    briefPrefix: " ❙ 간추린",
+    introEmoji: "☀️",
+    quoteEmoji: "💬",
+    groups: [...groups.entries()].map(([label, items]) => {
+      const [lead, ...briefs] = items;
+      return {
+        label,
+        leadItemId: lead?.id,
+        leadTitle: lead?.title,
+        leadImageUrl: lead?.imageUrl,
+        briefItemIds: briefs.map((item) => item.id),
+        briefTitles: briefs.map((item) => item.title)
+      };
+    })
+  };
+}
+
+function outlineLabel(item: RankedNewsletterItem, sectionId: NewsletterSectionId): string {
+  const [firstTag] = item.interestTags.map((tag) => tag.trim()).filter(Boolean);
+  if (firstTag) {
+    return firstTag;
+  }
+  if (item.type === "event") {
+    return "일정";
+  }
+  if (item.type === "recommendation") {
+    return "추천";
+  }
+  return sectionTitle(sectionId);
+}
+
 function buildEditorInstructions(
   template: NewsletterTemplate,
   tone: UserProfile["preferredTone"],
@@ -219,6 +274,9 @@ function buildEditorInstructions(
     layoutGuide: template.layoutGuide ?? template.sections.map((section) => section.title),
     styleGuide: [
       ...defaultStyleGuide(formatPreference),
+      "뉴스레터 시작단에는 outline을 기반으로 목차를 먼저 제공한다.",
+      "목차 대분류는 `❙ {카테고리}` 형식을 사용하고, 짧은 소식 묶음은 ` ❙ 간추린 {카테고리}` 형식을 사용한다.",
+      "상단 인트로나 독자 질문/콜아웃에는 ☀️와 💬 이모지를 사용할 수 있지만 과도하게 반복하지 않는다.",
       ...(template.styleGuide ?? [])
     ],
     sectionInstructions: {
@@ -228,6 +286,7 @@ function buildEditorInstructions(
     sourcePolicy: [
       "서버가 제공한 item, evidence, sourceUrl, date만 근거로 사용한다.",
       "각 주요 소식에는 가능하면 출처 링크를 유지한다.",
+      "representativeImageUrl 또는 imageUrl이 있으면 대표 이미지 후보로 사용할 수 있다.",
       "evidence에 없는 사실, 날짜, 링크, 수치를 새로 만들지 않는다.",
       ...(template.sourcePolicy ?? [])
     ],
@@ -259,6 +318,19 @@ function takeBySection(
 ): RankedNewsletterItem[] {
   const limit = template.sections.find((section) => section.id === sectionId)?.maxItems ?? 5;
   return items.slice(0, limit);
+}
+
+function sectionOrder(): NewsletterSectionId[] {
+  return ["top_stories", "key_dates", "deep_dive", "recommendations"];
+}
+
+function sectionTitle(sectionId: NewsletterSectionId): string {
+  return {
+    top_stories: "오늘 주요 소식",
+    key_dates: "주요 일정",
+    deep_dive: "상세 해설",
+    recommendations: "관련 추천"
+  }[sectionId];
 }
 
 function buildTitle(interests: string[]): string {

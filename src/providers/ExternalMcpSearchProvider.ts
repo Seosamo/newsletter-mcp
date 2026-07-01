@@ -280,6 +280,7 @@ function candidateToContentItem(candidate: Record<string, unknown>, input: Conte
 
   const title = cleanText(pickString(candidate, ["title", "name", "heading"]) ?? sourceNameFromUrl(url));
   const summary = cleanText(pickString(candidate, ["snippet", "description", "summary", "content", "text"]) ?? title);
+  const imageUrl = pickString(candidate, ["imageUrl", "image_url", "image", "thumbnail", "thumbnailUrl"]);
   const publishedAt = toDateOnly(pickString(candidate, ["publishedAt", "published_date", "date", "datetime"]));
   if (publishedAt && !isWithinPeriod(publishedAt, input.period.start, input.period.end)) {
     return undefined;
@@ -297,6 +298,8 @@ function candidateToContentItem(candidate: Record<string, unknown>, input: Conte
     summary,
     url,
     sourceName: pickString(candidate, ["sourceName", "source", "displayLink", "domain"]) ?? sourceNameFromUrl(url),
+    imageUrl: imageUrl && isHttpUrl(imageUrl) ? imageUrl : undefined,
+    imageAlt: imageUrl && isHttpUrl(imageUrl) ? title : undefined,
     publishedAt,
     interestTags: matchedInterests.length > 0 ? matchedInterests : input.interests,
     regions: matchedRegions,

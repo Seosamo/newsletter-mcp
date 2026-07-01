@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ApiConnectorRecommendation } from "../catalog/types.js";
 import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
 import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
-import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
+import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterOutline, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 
@@ -343,6 +343,7 @@ function formatDraftSection(sectionId: string, items: RankedNewsletterItem[]): s
     return [
       `${i + 1}. **${link}** (score: ${item.importanceScore})`,
       indentBlock(item.summary, "   "),
+      item.imageUrl ? `   _Representative Image_: ${item.imageUrl}` : "",
       formatSelectedEvidence(item.selectedEvidence ?? []),
       meta ? `   _${meta}_` : "",
       `   _Reason: ${item.rankingReason}_`
@@ -396,11 +397,45 @@ function formatDraft(draft: NewsletterDraft): string {
   return [
     header,
     formatEditorInstructions(draft.editorInstructions),
+    formatNewsletterOutline(draft.outline),
     "---",
     "## Draft Data",
     sectionsText,
     sourcesText
   ].filter(Boolean).join("\n\n") + formatWarnings(warnings);
+}
+
+function formatNewsletterOutline(outline: NewsletterOutline): string {
+  if (outline.groups.length === 0) {
+    return [
+      "## Newsletter Outline",
+      "",
+      "_No outline items._"
+    ].join("\n");
+  }
+
+  const lines = outline.groups.flatMap((group) => {
+    const groupLines = [
+      `${outline.leadPrefix} ${group.label}`,
+      group.leadTitle ?? "(대표 항목 없음)"
+    ];
+    if (group.leadImageUrl) {
+      groupLines.push(`대표 이미지: ${group.leadImageUrl}`);
+    }
+    if (group.briefTitles.length > 0) {
+      groupLines.push(`${outline.briefPrefix} ${group.label}`);
+      groupLines.push(...group.briefTitles);
+    }
+    return groupLines;
+  });
+
+  return [
+    "## Newsletter Outline",
+    "",
+    `${outline.title} ${outline.introEmoji}`,
+    "",
+    ...lines
+  ].join("\n");
 }
 
 function formatEditorInstructions(instructions: NewsletterEditorInstructions): string {

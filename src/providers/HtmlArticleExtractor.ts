@@ -18,6 +18,7 @@ export type ExtractedArticle = {
   url: string;
   title?: string;
   description?: string;
+  imageUrl?: string;
   text: string;
   publishedAt?: string;
   sourceName: string;
@@ -83,6 +84,12 @@ export function extractArticleFromHtml(url: string, html: string, maxTextChars =
     getMetaContent(cleanHtml, "name", "description"),
     getMetaContent(cleanHtml, "name", "twitter:description")
   ]);
+  const imageUrl = toAbsoluteUrl(firstNonEmpty([
+    getMetaContent(cleanHtml, "property", "og:image"),
+    getMetaContent(cleanHtml, "name", "twitter:image"),
+    getMetaContent(cleanHtml, "property", "twitter:image"),
+    getLinkHref(cleanHtml, "image_src")
+  ]), url);
   const publishedAt = toDateOnly(firstNonEmpty([
     getMetaContent(cleanHtml, "property", "article:published_time"),
     getMetaContent(cleanHtml, "name", "pubdate"),
@@ -96,6 +103,7 @@ export function extractArticleFromHtml(url: string, html: string, maxTextChars =
     url,
     title,
     description,
+    imageUrl,
     text,
     publishedAt,
     sourceName: sourceNameFromUrl(url)
@@ -117,6 +125,12 @@ function getTagText(html: string, tagName: string): string | undefined {
 function getTimeDatetime(html: string): string | undefined {
   const match = /<time\b[^>]*\bdatetime\s*=\s*["']([^"']+)["'][^>]*>/i.exec(html);
   return decodeHtml(match?.[1]);
+}
+
+function getLinkHref(html: string, relValue: string): string | undefined {
+  const escapedValue = escapeRegExp(relValue);
+  const linkPattern = new RegExp(`<link\\b(?=[^>]*\\brel\\s*=\\s*["'][^"']*${escapedValue}[^"']*["'])(?=[^>]*\\bhref\\s*=\\s*["']([^"']+)["'])[^>]*>`, "i");
+  return decodeHtml(linkPattern.exec(html)?.[1]);
 }
 
 function htmlToText(html: string): string {
@@ -172,6 +186,17 @@ function sourceNameFromUrl(url: string): string {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return "Web";
+  }
+}
+
+function toAbsoluteUrl(value: string | undefined, baseUrl: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return undefined;
   }
 }
 

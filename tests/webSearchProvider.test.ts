@@ -13,6 +13,7 @@ describe("WebSearchProvider", () => {
           <title>Fallback title</title>
           <meta property="og:title" content="Japan visa fees rise" />
           <meta name="description" content="Authorities announced a visa fee hike." />
+          <meta property="og:image" content="/images/japan-visa.jpg" />
           <meta property="article:published_time" content="2026-06-22T03:45:51Z" />
         </head>
         <body>
@@ -27,6 +28,7 @@ describe("WebSearchProvider", () => {
 
     expect(article.title).toBe("Japan visa fees rise");
     expect(article.description).toBe("Authorities announced a visa fee hike.");
+    expect(article.imageUrl).toBe("https://example.com/images/japan-visa.jpg");
     expect(article.publishedAt).toBe("2026-06-22");
     expect(article.text).toContain("Japan announced changes to visa fees");
   });
@@ -48,6 +50,8 @@ describe("WebSearchProvider", () => {
       type: "news",
       title: "Japan visa fees rise",
       sourceName: "example.com",
+      imageUrl: "https://cdn.example.com/japan-visa.jpg",
+      imageAlt: "Japan visa fees rise",
       publishedAt: "2026-06-22",
       interestTags: ["Japan"],
       regions: ["Japan"]
@@ -356,6 +360,7 @@ const fakeArticleFetch: FetchLike = async (url) => {
           <head>
             <meta property="og:title" content="Japan visa fees rise" />
             <meta name="description" content="Japan announced changes to visa fees for inbound travelers." />
+            <meta property="og:image" content="https://cdn.example.com/japan-visa.jpg" />
             <meta property="article:published_time" content="2026-06-22T03:45:51Z" />
           </head>
           <body>
@@ -385,6 +390,7 @@ const fakeLongArticleFetch: FetchLike = async (url) => {
           <head>
             <meta property="og:title" content="Japan visa fees rise" />
             <meta name="description" content="Japan announced changes to visa fees for inbound travelers." />
+            <meta property="og:image" content="https://cdn.example.com/japan-visa.jpg" />
             <meta property="article:published_time" content="2026-06-22T03:45:51Z" />
           </head>
           <body>

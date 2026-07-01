@@ -113,6 +113,8 @@ function toRankedItem(
     date,
     sourceName: item.sourceName,
     sourceUrl: item.url,
+    imageUrl: item.imageUrl,
+    imageAlt: item.imageAlt,
     importanceScore,
     rankingReason: buildRankingReason({
       interestScore,

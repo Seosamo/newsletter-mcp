@@ -10,6 +10,13 @@ type RssItem = {
   content?: string;
   pubDate?: string;
   isoDate?: string;
+  enclosure?: {
+    url?: string;
+    type?: string;
+  };
+  image?: {
+    url?: string;
+  };
 };
 
 export class RssNewsProvider implements ContentProvider {
@@ -59,6 +66,8 @@ export class RssNewsProvider implements ContentProvider {
             summary: summary || title,
             url: item.link,
             sourceName: feed.title ?? url,
+            imageUrl: pickRssImageUrl(item),
+            imageAlt: pickRssImageUrl(item) ? title : undefined,
             publishedAt,
             interestTags: matchedInterests.length > 0 ? matchedInterests : input.interests,
             regions: matchedRegions,
@@ -74,6 +83,15 @@ export class RssNewsProvider implements ContentProvider {
 
     return { items, warnings };
   }
+}
+
+function pickRssImageUrl(item: RssItem): string | undefined {
+  const enclosureUrl = item.enclosure?.type?.startsWith("image/") ? item.enclosure.url : undefined;
+  return firstHttpUrl([item.image?.url, enclosureUrl]);
+}
+
+function firstHttpUrl(values: Array<string | undefined>): string | undefined {
+  return values.find((value) => typeof value === "string" && /^https?:\/\//i.test(value));
 }
 
 function contentId(source: string, value: string): string {

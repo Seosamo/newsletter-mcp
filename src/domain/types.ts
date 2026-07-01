@@ -79,6 +79,24 @@ export type NewsletterEditorInstructions = {
   forbiddenRules: string[];
 };
 
+export type NewsletterOutlineGroup = {
+  label: string;
+  leadItemId?: string;
+  leadTitle?: string;
+  leadImageUrl?: string;
+  briefItemIds: string[];
+  briefTitles: string[];
+};
+
+export type NewsletterOutline = {
+  title: string;
+  leadPrefix: string;
+  briefPrefix: string;
+  introEmoji: string;
+  quoteEmoji: string;
+  groups: NewsletterOutlineGroup[];
+};
+
 export type ContentType = "news" | "event" | "recommendation";
 
 export type ContentItem = {
@@ -88,6 +106,8 @@ export type ContentItem = {
   summary: string;
   url?: string;
   sourceName?: string;
+  imageUrl?: string;
+  imageAlt?: string;
   publishedAt?: string;
   eventDate?: string;
   interestTags: string[];
@@ -138,6 +158,8 @@ export type RankedNewsletterItem = {
   date?: string;
   sourceName?: string;
   sourceUrl?: string;
+  imageUrl?: string;
+  imageAlt?: string;
   importanceScore: number;
   rankingReason: string;
   evidence: string[];
@@ -158,6 +180,7 @@ export type NewsletterDraft = {
     generatedAt: string;
   };
   editorInstructions: NewsletterEditorInstructions;
+  outline: NewsletterOutline;
   sections: Record<NewsletterSectionId, RankedNewsletterItem[]>;
   sources: SourceRef[];
   warnings: string[];

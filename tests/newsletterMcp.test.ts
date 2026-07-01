@@ -93,7 +93,17 @@ describe("chat-based newsletter MCP MVP", () => {
       tone: "friendly",
       length: "medium"
     });
+    expect(draft.editorInstructions.styleGuide.join(" ")).toContain("❙ {카테고리}");
+    expect(draft.editorInstructions.styleGuide.join(" ")).toContain("☀️와 💬");
     expect(draft.editorInstructions.sourcePolicy.join(" ")).toContain("evidence에 없는 사실");
+    expect(draft.outline).toMatchObject({
+      leadPrefix: "❙",
+      briefPrefix: " ❙ 간추린",
+      introEmoji: "☀️",
+      quoteEmoji: "💬"
+    });
+    expect(draft.outline.groups.length).toBeGreaterThan(0);
+    expect(draft.outline.groups[0].leadTitle).toBeTruthy();
 
     const history = await storage.listHistory("default");
     expect(history).toHaveLength(1);
@@ -341,7 +351,20 @@ describe("chat-based newsletter MCP MVP", () => {
     });
     const generator = new NewsletterDraftGenerator(
       storage,
-      [new StaticProvider([makeContentItem("japan", "Japan anime policy update", "https://example.com/japan")])],
+      [
+        new StaticProvider([
+          {
+            ...makeContentItem("japan", "Japan anime policy update", "https://example.com/japan"),
+            interestTags: ["경제"],
+            imageUrl: "https://example.com/images/japan.png",
+            imageAlt: "Japan anime policy update"
+          },
+          {
+            ...makeContentItem("japan-brief", "Japan anime market brief", "https://example.com/japan-brief"),
+            interestTags: ["경제"]
+          }
+        ])
+      ],
       () => new Date("2026-06-22T00:00:00.000Z")
     );
     const selector = new ApiCatalogSelector([]);
@@ -375,8 +398,19 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(draft.editorInstructions.styleGuide).toContain("친근하지만 과장하지 않는다.");
     expect(draft.editorInstructions.layoutGuide).toEqual(["제목", "3줄 요약", "오늘 주요 소식", "출처"]);
     expect(draft.editorInstructions.sectionInstructions.top_stories).toBe("중요도 순으로 최대 5개를 쓴다.");
+    expect(draft.outline.groups[0]).toMatchObject({
+      label: "경제",
+      leadTitle: "Japan anime policy update",
+      leadImageUrl: "https://example.com/images/japan.png",
+      briefTitles: ["Japan anime market brief"]
+    });
     expect(toolResult.content[0].text).toContain("## AI Editing Instructions");
     expect(toolResult.content[0].text).toContain("친근하지만 과장하지 않는다.");
+    expect(toolResult.content[0].text).toContain("## Newsletter Outline");
+    expect(toolResult.content[0].text).toContain("❙ 경제");
+    expect(toolResult.content[0].text).toContain(" ❙ 간추린 경제");
+    expect(toolResult.content[0].text).toContain("대표 이미지: https://example.com/images/japan.png");
+    expect(toolResult.content[0].text).toContain("_Representative Image_: https://example.com/images/japan.png");
     expect(toolResult.content[0].text).toContain("## Draft Data");
   });
 

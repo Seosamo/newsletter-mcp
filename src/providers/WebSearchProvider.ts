@@ -35,6 +35,8 @@ type TavilySearchResult = {
   raw_content?: string | null;
   published_date?: string;
   score?: number;
+  image?: string;
+  image_url?: string;
 };
 
 export class WebSearchProvider implements ContentProvider {
@@ -120,6 +122,11 @@ export class WebSearchProvider implements ContentProvider {
         cleanText(result.content),
         extracted?.text.slice(0, 280)
       ]) ?? title;
+      const imageUrl = firstNonEmpty([
+        extracted?.imageUrl,
+        cleanText(result.image_url),
+        cleanText(result.image)
+      ]);
       const evidence = [summary];
       const searchable = `${title} ${summary} ${extracted?.text ?? ""}`.toLocaleLowerCase();
       const matchedInterests = input.interests.filter((interest) => searchable.includes(interest.toLocaleLowerCase()));
@@ -133,6 +140,8 @@ export class WebSearchProvider implements ContentProvider {
         summary,
         url: result.url,
         sourceName: extracted?.sourceName ?? sourceNameFromUrl(result.url),
+        imageUrl,
+        imageAlt: imageUrl ? title : undefined,
         publishedAt,
         interestTags: matchedInterests.length > 0 ? matchedInterests : input.interests,
         regions: matchedRegions,
@@ -178,7 +187,7 @@ export class WebSearchProvider implements ContentProvider {
       end_date: input.period.end,
       include_answer: false,
       include_raw_content: this.includeRawContent,
-      include_images: false,
+      include_images: true,
       include_domains: this.allowedDomains.length > 0 ? this.allowedDomains : undefined,
       exclude_domains: this.blockedDomains.length > 0 ? this.blockedDomains : undefined
     };
