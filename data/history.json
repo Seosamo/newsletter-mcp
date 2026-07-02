@@ -463,6 +463,102 @@
           "alphasquare.co.kr"
         ]
       }
+    },
+    {
+      "id": "draft_7502197c-c663-49f7-b9fa-9403ed55ae96",
+      "userId": "default",
+      "userMessage": "최근 삼성전자 주가",
+      "structuredRequest": {
+        "interests": [
+          "삼성전자",
+          "주식"
+        ],
+        "regions": [
+          "대한민국"
+        ],
+        "period": {
+          "start": "2026-06-22",
+          "end": "2026-06-29"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-29T01:50:09.841Z",
+      "draftSummary": {
+        "title": "삼성전자/주식 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "finance.naver.com",
+          "alphasquare.co.kr",
+          "m.finance.daum.net",
+          "stock.mk.co.kr",
+          "stockplus.com"
+        ]
+      }
+    },
+    {
+      "id": "draft_d613c4f2-5340-40f0-9d9e-6d88a74c1368",
+      "userId": "default",
+      "userMessage": "최근 삼성전자 주가",
+      "structuredRequest": {
+        "interests": [
+          "삼성전자",
+          "주식"
+        ],
+        "regions": [
+          "대한민국"
+        ],
+        "period": {
+          "start": "2026-06-22",
+          "end": "2026-06-29"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-29T01:52:33.211Z",
+      "draftSummary": {
+        "title": "삼성전자/주식 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "finance.naver.com",
+          "alphasquare.co.kr",
+          "m.finance.daum.net",
+          "stock.mk.co.kr",
+          "stockplus.com"
+        ]
+      }
+    },
+    {
+      "id": "draft_292f2d84-2ba9-4131-bfaf-12c1b46e713c",
+      "userId": "default",
+      "userMessage": "최신 일본 애니메이션 뉴스",
+      "structuredRequest": {
+        "interests": [
+          "일본",
+          "애니메이션"
+        ],
+        "regions": [
+          "일본"
+        ],
+        "period": {
+          "start": "2026-06-22",
+          "end": "2026-06-29"
+        },
+        "tone": "friendly",
+        "templateId": "default_weekly"
+      },
+      "generatedAt": "2026-06-29T02:10:22.039Z",
+      "draftSummary": {
+        "title": "일본/애니메이션 뉴스레터 초안",
+        "itemCount": 7,
+        "topSources": [
+          "namu.wiki",
+          "m.blog.naver.com",
+          "bnuepress.com",
+          "ko.wikipedia.org",
+          "laftel.net"
+        ]
+      }
     }
   ]
 }

@@ -414,6 +414,33 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(toolResult.content[0].text).toContain("## Draft Data");
   });
 
+  it("defaults newsletter draft generation to the default user when userId is omitted", async () => {
+    const storage = await createStorage({
+      profiles: [makeProfile("default", { interests: ["Japan"] })],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider([makeContentItem("default-japan", "Default Japan item", "https://example.com/default-japan")])],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+    const selector = new ApiCatalogSelector([]);
+
+    const result = await callTool(storage, generator, selector, "generate_newsletter_draft", {
+      userMessage: "Japan newsletter",
+      interests: ["Japan"],
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+
+    const history = await storage.listHistory("default");
+    expect(result.content[0].text).toContain("Default Japan item");
+    expect(history).toHaveLength(1);
+    expect(history[0].userId).toBe("default");
+  });
+
   it("accepts only MCP protocol versions in the required supported range", () => {
     expect(SUPPORTED_PROTOCOL_VERSIONS).toEqual(["2025-03-26", "2025-06-18", "2025-11-25"]);
     expect(isSupportedProtocolVersion("2025-03-26")).toBe(true);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
+import { createDefaultProfile, DEFAULT_TEMPLATE_ID, DEFAULT_USER_ID } from "../domain/defaults.js";
 import type {
   ContentSearchInput,
   GenerateNewsletterDraftInput,
@@ -34,10 +34,11 @@ export class NewsletterDraftGenerator {
 
   async generate(input: GenerateNewsletterDraftInput): Promise<NewsletterDraft> {
     const now = this.now();
-    const profile = (await this.storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId, now);
+    const userId = normalizeUserId(input.userId);
+    const profile = (await this.storage.getProfile(userId)) ?? createDefaultProfile(userId, now);
     const templateId = input.templateId ?? DEFAULT_TEMPLATE_ID;
     const template = await this.resolveTemplate(templateId);
-    const settings = await this.storage.listUserCategorySettings(input.userId);
+    const settings = await this.storage.listUserCategorySettings(userId);
 
     const interests = normalizeList(input.interests ?? profile.interests);
     const regions = normalizeList(input.regions ?? profile.regions);
@@ -57,7 +58,7 @@ export class NewsletterDraftGenerator {
     }
 
     const searchInput: ContentSearchInput = {
-      userId: input.userId,
+      userId,
       interests,
       regions,
       keywords,
@@ -103,7 +104,7 @@ export class NewsletterDraftGenerator {
       draftId: `draft_${randomUUID()}`,
       title,
       metadata: {
-        userId: input.userId,
+        userId,
         userMessage: input.userMessage,
         interests,
         regions,
@@ -136,6 +137,10 @@ export class NewsletterDraftGenerator {
 
     throw new Error(`Newsletter template not found: ${templateId}`);
   }
+}
+
+function normalizeUserId(userId: string | undefined): string {
+  return userId?.trim() || DEFAULT_USER_ID;
 }
 
 function capSelectedEvidenceBudget(items: RankedNewsletterItem[], maxSelectedEvidence: number): RankedNewsletterItem[] {

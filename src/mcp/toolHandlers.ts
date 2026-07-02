@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ApiConnectorRecommendation } from "../catalog/types.js";
 import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
-import { createDefaultProfile, DEFAULT_TEMPLATE_ID } from "../domain/defaults.js";
+import { createDefaultProfile, DEFAULT_TEMPLATE_ID, DEFAULT_USER_ID } from "../domain/defaults.js";
 import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterOutline, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
@@ -109,7 +109,7 @@ export function listTools() {
         description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}.`,
         annotations: openWorldWriteAnnotation("Generate Newsletter Draft"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier."),
+          userId: stringSchema("User identifier. Defaults to default when omitted.", true),
           userMessage: stringSchema("Original user chat message."),
           interests: arrayStringSchema("Free-form user interest tags.", true),
           regions: arrayStringSchema("Preferred regions.", true),
@@ -130,7 +130,7 @@ export function listTools() {
             additionalProperties: true
           },
           templateId: stringSchema("Template id.", true)
-        }, ["userId", "userMessage"])
+        }, ["userMessage"])
       }),
       toolDefinition({
         name: "recommend_api_connectors",
@@ -599,7 +599,7 @@ const periodSchema = z.object({
 });
 
 const generateDraftSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
   userMessage: z.string().min(1),
   interests: z.array(z.string()).optional(),
   regions: z.array(z.string()).optional(),
@@ -608,6 +608,10 @@ const generateDraftSchema = z.object({
   format: formatPatchSchema.optional(),
   templateId: z.string().default(DEFAULT_TEMPLATE_ID).optional()
 });
+
+function defaultBlankString(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
 
 const recommendApiConnectorsSchema = z.object({
   userId: z.string().min(1),

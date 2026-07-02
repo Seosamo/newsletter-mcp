@@ -7,6 +7,8 @@ import type {
 
 export const DEFAULT_TEMPLATE_ID = "default_weekly";
 
+export const DEFAULT_USER_ID = "default";
+
 export const DEFAULT_TONE: NewsletterTone = "friendly";
 
 export const DEFAULT_SCHEDULE: UserSchedule = {

@@ -16,7 +16,7 @@ This is intentionally not a general-purpose crawler. It only fetches a small num
 ## Environment variables
 
 ```bash
-WEB_SEARCH_PROVIDER=all
+WEB_SEARCH_PROVIDER=noapi_google_search
 TAVILY_API_KEY=...
 TAVILY_SEARCH_API_URL=https://api.tavily.com/search
 TAVILY_SEARCH_TOPIC=news
@@ -31,20 +31,23 @@ HTML_EXTRACT_MAX_TEXT_CHARS=5000
 WEB_SEARCH_ALLOWED_DOMAINS=
 WEB_SEARCH_BLOCKED_DOMAINS=
 
-NOAPI_GOOGLE_SEARCH_COMMAND=
+NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp
 NOAPI_GOOGLE_SEARCH_ARGS=
 NOAPI_GOOGLE_SEARCH_TOOL_NAME=google_search
 NOAPI_GOOGLE_SEARCH_QUERY_PARAM=query
 NOAPI_GOOGLE_SEARCH_MAX_RESULTS_PARAM=num_results
+NOAPI_GOOGLE_SEARCH_MAX_RESULTS=6
 NOAPI_GOOGLE_SEARCH_VISIT_PAGES=true
 NOAPI_GOOGLE_SEARCH_VISIT_PAGE_TOOL_NAME=visit_page
 NOAPI_GOOGLE_SEARCH_VISIT_PAGE_URL_PARAM=url
 NOAPI_GOOGLE_SEARCH_MAX_PAGES_TO_VISIT=3
+NOAPI_GOOGLE_SEARCH_PAGE_CONTENT_MAX_CHARS=1800
 NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_MAX_CHARS=1800
 NOAPI_GOOGLE_SEARCH_PAGE_CHUNK_OVERLAP_CHARS=200
 NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_PER_PAGE=1
 NOAPI_GOOGLE_SEARCH_MAX_SELECTED_CHUNKS_TOTAL=3
 ENABLE_NOAPI_GOOGLE_SEARCH=false
+ENABLE_MOCK_PROVIDERS=false
 ```
 
 `TAVILY_API_KEY` is enough to enable the Tavily provider. `ENABLE_WEB_SEARCH=true` can be used to force registration and surface a warning when the key is missing.
@@ -62,7 +65,7 @@ pipx install noapi-google-search-mcp
 playwright install chromium
 ```
 
-Then enable it for this project:
+These values are now the built-in defaults. You only need to set them when overriding the defaults:
 
 ```bash
 WEB_SEARCH_PROVIDER=noapi_google_search

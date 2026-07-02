@@ -138,7 +138,7 @@ export type Period = {
 };
 
 export type GenerateNewsletterDraftInput = {
-  userId: string;
+  userId?: string;
   userMessage: string;
   interests?: string[];
   regions?: string[];
