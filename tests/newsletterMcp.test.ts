@@ -13,6 +13,7 @@ import type {
 import { ApiCatalogSelector } from "../src/catalog/ApiCatalogSelector.js";
 import { NewsletterDraftGenerator } from "../src/pipeline/draftGenerator.js";
 import { isSupportedProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from "../src/mcp/protocolVersion.js";
+import { listResources, readResource } from "../src/mcp/resources.js";
 import { callTool, listTools } from "../src/mcp/toolHandlers.js";
 import type { ContentProvider } from "../src/providers/ContentProvider.js";
 import {
@@ -140,6 +141,45 @@ describe("chat-based newsletter MCP MVP", () => {
       start: "2026-06-15",
       end: "2026-06-22"
     });
+  });
+
+  it("searches once with all interests and once per requested interest", async () => {
+    const storage = await createStorage({
+      profiles: [makeProfile("multi-interest")],
+      categorySettings: {}
+    });
+    const provider = new RecordingProvider();
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [provider],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    const draft = await generator.generate({
+      userId: "multi-interest",
+      userMessage: "애니메이션/경제/도서 뉴스레터 만들어줘",
+      interests: ["애니메이션", "경제", "도서"],
+      regions: ["일본"],
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-22"
+      }
+    });
+
+    expect(provider.calls.map((call) => call.interests)).toEqual([
+      ["애니메이션", "경제", "도서"],
+      ["애니메이션"],
+      ["경제"],
+      ["도서"]
+    ]);
+    expect(provider.calls.every((call) => call.regions[0] === "일본")).toBe(true);
+    expect(draft.metadata.interests).toEqual(["애니메이션", "경제", "도서"]);
+    expect(draft.sections.top_stories.map((item) => item.title)).toEqual([
+      "검색 결과: 애니메이션/경제/도서",
+      "검색 결과: 애니메이션",
+      "검색 결과: 경제",
+      "검색 결과: 도서"
+    ]);
   });
 
   it("filters excluded keywords and deduplicates equivalent URLs", async () => {
@@ -441,6 +481,76 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(history[0].userId).toBe("default");
   });
 
+  it("uses authenticated OAuth user id instead of tool-supplied userId", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("oauth-user", { interests: ["Auth Topic"] }),
+        makeProfile("attacker", { interests: ["Wrong Topic"] })
+      ],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider([makeContentItem("auth-topic", "Auth Topic item", "https://example.com/auth-topic")])],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+    const selector = new ApiCatalogSelector([]);
+    const auth = {
+      userId: "oauth-user",
+      claims: { sub: "oauth-user" },
+      scopes: []
+    };
+
+    await callTool(storage, generator, selector, "update_user_preferences", {
+      userId: "attacker",
+      patch: {
+        regions: ["Seoul"]
+      }
+    }, auth);
+    const result = await callTool(storage, generator, selector, "generate_newsletter_draft", {
+      userId: "attacker",
+      userMessage: "Make my newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    }, auth);
+
+    await expect(storage.getProfile("oauth-user")).resolves.toMatchObject({
+      regions: ["Seoul"]
+    });
+    await expect(storage.getProfile("attacker")).resolves.toMatchObject({
+      regions: []
+    });
+    await expect(storage.listHistory("oauth-user")).resolves.toHaveLength(1);
+    await expect(storage.listHistory("attacker")).resolves.toHaveLength(0);
+    expect(result.content[0].text).toContain("Auth Topic item");
+  });
+
+  it("limits user resources to the authenticated OAuth user", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("oauth-user"),
+        makeProfile("other-user")
+      ],
+      categorySettings: {}
+    });
+    const auth = {
+      userId: "oauth-user",
+      claims: { sub: "oauth-user" },
+      scopes: []
+    };
+
+    const resources = await listResources(storage, auth);
+    const resourceText = JSON.stringify(resources);
+
+    expect(resourceText).toContain("oauth-user");
+    expect(resourceText).not.toContain("other-user");
+    await expect(readResource(storage, "newsletter://profiles/other-user", auth)).rejects.toThrow(
+      "Authenticated user cannot access another user's newsletter resource."
+    );
+  });
+
   it("accepts only MCP protocol versions in the required supported range", () => {
     expect(SUPPORTED_PROTOCOL_VERSIONS).toEqual(["2025-03-26", "2025-06-18", "2025-11-25"]);
     expect(isSupportedProtocolVersion("2025-03-26")).toBe(true);
@@ -505,6 +615,35 @@ class StaticProvider implements ContentProvider {
   async search(_input: ContentSearchInput): Promise<ContentProviderResult> {
     return {
       items: this.items,
+      warnings: []
+    };
+  }
+}
+
+class RecordingProvider implements ContentProvider {
+  readonly name = "recording";
+  readonly calls: ContentSearchInput[] = [];
+
+  async search(input: ContentSearchInput): Promise<ContentProviderResult> {
+    this.calls.push(input);
+    const label = input.interests.join("/") || "empty";
+    return {
+      items: [
+        {
+          id: `recording-${this.calls.length}`,
+          type: "news",
+          title: `검색 결과: ${label}`,
+          summary: `${label} 검색 결과 요약`,
+          url: `https://example.com/${encodeURIComponent(label)}`,
+          sourceName: "Recording Provider",
+          publishedAt: input.period.end,
+          interestTags: input.interests,
+          regions: input.regions,
+          keywords: input.keywords,
+          evidence: [`${label} evidence`],
+          sourceReliability: 0.8
+        }
+      ],
       warnings: []
     };
   }

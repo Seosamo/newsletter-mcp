@@ -34,9 +34,44 @@ describe("MCP server production configuration", () => {
       "PUBLIC_BASE_URL must be an HTTPS public URL when set in production."
     );
   });
+
+  it("exposes OAuth protected resource metadata when OAuth is enabled", async () => {
+    const server = await startTestServer("https://newsletter.example.test", {
+      enabled: true,
+      issuer: "https://auth.example.test",
+      audience: "https://newsletter.example.test/mcp",
+      jwksUrl: "https://auth.example.test/jwks.json",
+      authorizationServers: ["https://auth.example.test"],
+      resource: "https://newsletter.example.test/mcp",
+      resourceMetadataUrl: "https://newsletter.example.test/.well-known/oauth-protected-resource/mcp",
+      scopesSupported: ["newsletter:read"],
+      requiredScopes: ["newsletter:read"],
+      userIdClaim: "sub",
+      allowedAlgorithms: ["RS256"],
+      jwksCacheTtlMs: 300000,
+      clockSkewSeconds: 60
+    });
+
+    const response = await fetch(`${serverUrl(server)}/.well-known/oauth-protected-resource/mcp`);
+    const metadata = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(metadata).toMatchObject({
+      resource: "https://newsletter.example.test/mcp",
+      resource_name: "Chat Newsletter MCP",
+      authorization_servers: ["https://auth.example.test"],
+      bearer_methods_supported: ["header"],
+      scopes_supported: ["newsletter:read"]
+    });
+
+    await closeServer(server);
+  });
 });
 
-async function startTestServer(publicBaseUrl?: string): Promise<HttpServer> {
+async function startTestServer(
+  publicBaseUrl?: string,
+  oauth?: Parameters<typeof startMcpServer>[3]["oauth"]
+): Promise<HttpServer> {
   const dir = await mkdtemp(path.join(tmpdir(), "newsletter-mcp-server-"));
   tempDirs.push(dir);
   return startMcpServer(new JsonFileStorage(dir), [], new ApiCatalogSelector([]), {
@@ -44,8 +79,17 @@ async function startTestServer(publicBaseUrl?: string): Promise<HttpServer> {
     port: 0,
     endpointPath: "/mcp",
     publicBaseUrl,
-    allowedOrigins: []
+    allowedOrigins: [],
+    oauth
   });
+}
+
+function serverUrl(server: HttpServer): string {
+  const address = server.address();
+  if (typeof address !== "object" || !address) {
+    throw new Error("Server is not listening.");
+  }
+  return `http://127.0.0.1:${address.port}`;
 }
 
 async function closeServer(server: HttpServer): Promise<void> {

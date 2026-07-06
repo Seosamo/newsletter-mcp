@@ -15,6 +15,13 @@ import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { ContentProvider } from "../providers/ContentProvider.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 import { validateHttpSecurity } from "./httpSecurity.js";
+import {
+  authenticateOAuthRequest,
+  protectedResourceMetadata,
+  respondOAuthError,
+  type AuthenticatedUser,
+  type OAuthOptions
+} from "./oauth.js";
 import { isSupportedProtocolVersion, resolveProtocolVersionHeader } from "./protocolVersion.js";
 import { listResourceTemplates, listResources, readResource } from "./resources.js";
 import { callTool, listTools } from "./toolHandlers.js";
@@ -26,6 +33,7 @@ export type HttpMcpServerOptions = {
   publicBaseUrl?: string;
   allowedOrigins: string[];
   authToken?: string;
+  oauth?: OAuthOptions;
 };
 
 export async function startMcpServer(
@@ -47,13 +55,15 @@ export async function startMcpServer(
         : options.endpointPath
     });
   });
+  registerOAuthMetadataRoutes(app, options);
 
   app.post(options.endpointPath, async (req: Request, res: Response) => {
-    if (!validateRequest(req, res, options)) {
+    const validation = await validateRequest(req, res, options);
+    if (!validation.ok) {
       return;
     }
 
-    const server = createServer(storage, providers, apiCatalogSelector);
+    const server = createServer(storage, providers, apiCatalogSelector, validation.auth);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true
@@ -81,8 +91,9 @@ export async function startMcpServer(
     }
   });
 
-  app.get(options.endpointPath, (req: Request, res: Response) => {
-    if (!validateRequest(req, res, options)) {
+  app.get(options.endpointPath, async (req: Request, res: Response) => {
+    const validation = await validateRequest(req, res, options);
+    if (!validation.ok) {
       return;
     }
     res.status(405).set("Allow", "POST").json({
@@ -95,8 +106,9 @@ export async function startMcpServer(
     });
   });
 
-  app.delete(options.endpointPath, (req: Request, res: Response) => {
-    if (!validateRequest(req, res, options)) {
+  app.delete(options.endpointPath, async (req: Request, res: Response) => {
+    const validation = await validateRequest(req, res, options);
+    if (!validation.ok) {
       return;
     }
     res.status(405).set("Allow", "POST").json({
@@ -124,7 +136,8 @@ export async function startMcpServer(
 function createServer(
   storage: NewsletterStorage,
   providers: ContentProvider[],
-  apiCatalogSelector: ApiCatalogSelector
+  apiCatalogSelector: ApiCatalogSelector,
+  auth?: AuthenticatedUser
 ): Server {
   const server = new Server(
     {
@@ -143,7 +156,14 @@ function createServer(
   server.setRequestHandler(ListToolsRequestSchema, async () => listTools());
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      return await callTool(storage, generator, apiCatalogSelector, request.params.name, request.params.arguments ?? {});
+      return await callTool(
+        storage,
+        generator,
+        apiCatalogSelector,
+        request.params.name,
+        request.params.arguments ?? {},
+        auth
+      );
     } catch (error) {
       console.error(`Tool call failed: ${request.params.name}`, error);
       return {
@@ -157,10 +177,10 @@ function createServer(
       };
     }
   });
-  server.setRequestHandler(ListResourcesRequestSchema, async () => listResources(storage));
+  server.setRequestHandler(ListResourcesRequestSchema, async () => listResources(storage, auth));
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => listResourceTemplates());
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    return readResource(storage, request.params.uri);
+    return readResource(storage, request.params.uri, auth);
   });
 
   return server;
@@ -178,7 +198,18 @@ function formatToolError(toolName: string, error: unknown): string {
   ].join("\n");
 }
 
-function validateRequest(req: Request, res: Response, options: HttpMcpServerOptions): boolean {
+type RequestValidationResult = {
+  ok: true;
+  auth?: AuthenticatedUser;
+} | {
+  ok: false;
+};
+
+async function validateRequest(
+  req: Request,
+  res: Response,
+  options: HttpMcpServerOptions
+): Promise<RequestValidationResult> {
   const protocolVersion = resolveProtocolVersionHeader(req.headers["mcp-protocol-version"]);
   const initializeProtocolVersion = getInitializeProtocolVersion(req.body);
   const unsupportedVersion = !isSupportedProtocolVersion(protocolVersion)
@@ -189,13 +220,30 @@ function validateRequest(req: Request, res: Response, options: HttpMcpServerOpti
 
   if (unsupportedVersion) {
     respondUnsupportedProtocolVersion(res, unsupportedVersion);
-    return false;
+    return { ok: false };
   }
 
-  return validateHttpSecurity(req, res, {
-    authToken: options.authToken,
+  const oauthEnabled = options.oauth?.enabled === true;
+  if (!validateHttpSecurity(req, res, {
+    authToken: oauthEnabled ? undefined : options.authToken,
     allowedOrigins: options.allowedOrigins
-  });
+  })) {
+    return { ok: false };
+  }
+
+  if (!oauthEnabled || !options.oauth) {
+    return { ok: true };
+  }
+
+  try {
+    return {
+      ok: true,
+      auth: await authenticateOAuthRequest(req, options.oauth)
+    };
+  } catch (error) {
+    respondOAuthError(res, options.oauth, error);
+    return { ok: false };
+  }
 }
 
 function getInitializeProtocolVersion(body: unknown): string | undefined {
@@ -231,6 +279,15 @@ function respondUnsupportedProtocolVersion(res: Response, requested: string): vo
 }
 
 function assertRemoteConfiguration(options: HttpMcpServerOptions): void {
+  if (options.oauth?.enabled) {
+    if (options.oauth.authorizationServers.length === 0) {
+      throw new Error("OAUTH_AUTHORIZATION_SERVERS or OAUTH_ISSUER is required when OAuth is enabled.");
+    }
+    if (!options.oauth.jwksUrl && !options.oauth.issuer) {
+      throw new Error("OAUTH_JWKS_URL or OAUTH_ISSUER is required when OAuth is enabled.");
+    }
+  }
+
   if (process.env.NODE_ENV !== "production") {
     return;
   }
@@ -241,5 +298,26 @@ function assertRemoteConfiguration(options: HttpMcpServerOptions): void {
 
   if (!/^https:\/\/[^/]+/i.test(options.publicBaseUrl)) {
     throw new Error("PUBLIC_BASE_URL must be an HTTPS public URL when set in production.");
+  }
+}
+
+function registerOAuthMetadataRoutes(
+  app: ReturnType<typeof createMcpExpressApp>,
+  options: HttpMcpServerOptions
+): void {
+  if (!options.oauth?.enabled) {
+    return;
+  }
+
+  const metadata = protectedResourceMetadata(options.oauth);
+  const rootPath = "/.well-known/oauth-protected-resource";
+  const endpointPath = `${rootPath}${options.endpointPath === "/" ? "" : options.endpointPath}`;
+  const handler = (_req: Request, res: Response) => {
+    res.json(metadata);
+  };
+
+  app.get(rootPath, handler);
+  if (endpointPath !== rootPath) {
+    app.get(endpointPath, handler);
   }
 }

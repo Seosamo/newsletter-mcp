@@ -5,6 +5,7 @@ import { createDefaultProfile, DEFAULT_TEMPLATE_ID, DEFAULT_USER_ID } from "../d
 import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterOutline, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
+import type { AuthenticatedUser } from "./oauth.js";
 
 type ToolResult = {
   content: Array<{
@@ -31,22 +32,22 @@ export function listTools() {
         description: `Retrieves a user's newsletter preference profile from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("Get User Profile"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier.")
-        }, ["userId"])
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true)
+        }, [])
       }),
       toolDefinition({
         name: "update_user_preferences",
         description: `Creates or patches a user's chat-derived newsletter preferences in ${SERVICE_NAME_FIXED}.`,
         annotations: writeAnnotation("Update User Preferences"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier."),
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
           patch: {
             type: "object",
             description: "Partial preference update parsed by the LLM client.",
             additionalProperties: true
           },
           sourceMessage: stringSchema("Optional original user message.", true)
-        }, ["userId", "patch"])
+        }, ["patch"])
       }),
       toolDefinition({
         name: "list_newsletter_templates",
@@ -77,32 +78,32 @@ export function listTools() {
         description: `Lists a user's dynamic interest tag settings from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("List User Category Settings"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier.")
-        }, ["userId"])
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true)
+        }, [])
       }),
       toolDefinition({
         name: "upsert_user_category_setting",
         description: `Creates or replaces metadata for one user-defined interest tag in ${SERVICE_NAME_FIXED}.`,
         annotations: writeAnnotation("Upsert User Category Setting"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier."),
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
           setting: {
             type: "object",
             additionalProperties: true
           }
-        }, ["userId", "setting"])
+        }, ["setting"])
       }),
       toolDefinition({
         name: "list_newsletter_history",
         description: `Lists recently generated newsletter drafts for a user from ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("List Newsletter History"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier."),
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
           limit: {
             type: "number",
             description: "Maximum history entries to return."
           }
-        }, ["userId"])
+        }, [])
       }),
       toolDefinition({
         name: "generate_newsletter_draft",
@@ -137,7 +138,7 @@ export function listTools() {
         description: `Recommends public API connector candidates for user interests using ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("Recommend API Connectors"),
         inputSchema: objectSchema({
-          userId: stringSchema("User identifier."),
+          userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
           interests: arrayStringSchema("Free-form user interest tags.", true),
           regions: arrayStringSchema("Preferred regions.", true),
           keywords: arrayStringSchema("Additional search keywords.", true),
@@ -149,7 +150,7 @@ export function listTools() {
               end: { type: "string" }
             }
           }
-        }, ["userId"])
+        }, [])
       })
     ]
   };
@@ -160,16 +161,18 @@ export async function callTool(
   generator: NewsletterDraftGenerator,
   apiCatalogSelector: ApiCatalogSelector,
   name: string,
-  args: unknown
+  args: unknown,
+  auth?: AuthenticatedUser
 ): Promise<ToolResult> {
+  const scopedArgs = applyAuthenticatedUser(name, args, auth);
   switch (name) {
     case "get_user_profile": {
-      const input = userIdSchema.parse(args);
+      const input = userIdSchema.parse(scopedArgs);
       const profile = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
       return textResult(formatProfile(profile));
     }
     case "update_user_preferences": {
-      const input = updatePreferencesSchema.parse(args);
+      const input = updatePreferencesSchema.parse(scopedArgs);
       const existing = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
       const profile = mergeProfile(existing, input.patch);
       await storage.saveProfile(profile);
@@ -195,29 +198,29 @@ export async function callTool(
       return textResult(`## Newsletter Template Updated\n\n${formatTemplate(input)}`);
     }
     case "list_user_category_settings": {
-      const input = userIdSchema.parse(args);
+      const input = userIdSchema.parse(scopedArgs);
       const settings = await storage.listUserCategorySettings(input.userId);
       const body = settings.map(formatCategorySetting).join("\n\n---\n\n");
       return textResult(`## Category Settings for \`${input.userId}\`\n\n${body || "_No category settings found._"}`);
     }
     case "upsert_user_category_setting": {
-      const input = upsertCategorySettingSchema.parse(args);
+      const input = upsertCategorySettingSchema.parse(scopedArgs);
       await storage.upsertUserCategorySetting(input.userId, input.setting);
       return textResult(`## Category Setting Updated\n\n${formatCategorySetting(input.setting)}`);
     }
     case "list_newsletter_history": {
-      const input = listHistorySchema.parse(args);
+      const input = listHistorySchema.parse(scopedArgs);
       const history = await storage.listHistory(input.userId, input.limit);
       const body = history.map(formatHistoryEntry).join("\n\n---\n\n");
       return textResult(`## Newsletter History for \`${input.userId}\`\n\n${body || "_No history found._"}`);
     }
     case "generate_newsletter_draft": {
-      const input = generateDraftSchema.parse(args);
+      const input = generateDraftSchema.parse(scopedArgs);
       const draft = await generator.generate(input);
       return textResult(formatDraft(draft));
     }
     case "recommend_api_connectors": {
-      const input = recommendApiConnectorsSchema.parse(args);
+      const input = recommendApiConnectorsSchema.parse(scopedArgs);
       return textResult(formatApiConnectorRecommendations(
         input.userId,
         apiCatalogSelector.select(input, 8)
@@ -226,6 +229,31 @@ export async function callTool(
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+const USER_SCOPED_TOOLS = new Set([
+  "get_user_profile",
+  "update_user_preferences",
+  "list_user_category_settings",
+  "upsert_user_category_setting",
+  "list_newsletter_history",
+  "generate_newsletter_draft",
+  "recommend_api_connectors"
+]);
+
+function applyAuthenticatedUser(name: string, args: unknown, auth?: AuthenticatedUser): unknown {
+  if (!auth || !USER_SCOPED_TOOLS.has(name)) {
+    return args;
+  }
+  if (typeof args === "object" && args !== null && !Array.isArray(args)) {
+    return {
+      ...args,
+      userId: auth.userId
+    };
+  }
+  return {
+    userId: auth.userId
+  };
 }
 
 function textResult(markdown: string): ToolResult {
@@ -495,7 +523,7 @@ function formatApiConnectorRecommendations(userId: string, recommendations: ApiC
 }
 
 const userIdSchema = z.object({
-  userId: z.string().min(1)
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID))
 });
 
 const templateIdSchema = z.object({
@@ -566,7 +594,7 @@ const profilePatchSchema = z.object({
 });
 
 const updatePreferencesSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
   patch: profilePatchSchema,
   sourceMessage: z.string().optional()
 });
@@ -584,12 +612,12 @@ const categorySettingSchema = z.object({
 }));
 
 const upsertCategorySettingSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
   setting: categorySettingSchema
 });
 
 const listHistorySchema = z.object({
-  userId: z.string().min(1),
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
   limit: z.number().int().positive().optional()
 });
 
@@ -614,7 +642,7 @@ function defaultBlankString(value: unknown): unknown {
 }
 
 const recommendApiConnectorsSchema = z.object({
-  userId: z.string().min(1),
+  userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
   interests: z.array(z.string()).default([]),
   regions: z.array(z.string()).default([]),
   keywords: z.array(z.string()).default([]),

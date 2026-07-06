@@ -66,18 +66,21 @@ export class NewsletterDraftGenerator {
       period,
       excludedKeywords: profile.excludedKeywords
     };
+    const searchInputs = buildSearchInputs(searchInput, interests, settings);
 
     const providerResults = await Promise.all(
-      this.providers.map(async (provider) => {
-        try {
-          return await provider.search(searchInput);
-        } catch (error) {
-          return {
-            items: [],
-            warnings: [`${provider.name} failed: ${error instanceof Error ? error.message : String(error)}`]
-          };
-        }
-      })
+      this.providers.flatMap((provider) =>
+        searchInputs.map(async (providerInput) => {
+          try {
+            return await provider.search(providerInput);
+          } catch (error) {
+            return {
+              items: [],
+              warnings: [`${provider.name} failed for ${formatSearchInputLabel(providerInput)}: ${error instanceof Error ? error.message : String(error)}`]
+            };
+          }
+        })
+      )
     );
 
     const collected = providerResults.flatMap((result) => result.items);
@@ -193,6 +196,32 @@ function buildKeywords(interests: string[], settings: InterestTagSetting[]): str
       ...settings.flatMap((setting) => [setting.label, ...setting.aliases, ...setting.keywords])
     ])
   ].filter(Boolean);
+}
+
+function buildSearchInputs(
+  baseInput: ContentSearchInput,
+  interests: string[],
+  settings: InterestTagSetting[]
+): ContentSearchInput[] {
+  if (interests.length <= 1) {
+    return [baseInput];
+  }
+
+  const perInterestInputs = interests.map((interest) => {
+    const matchedSettings = matchSettings([interest], settings);
+    return {
+      ...baseInput,
+      interests: [interest],
+      keywords: buildKeywords([interest], matchedSettings),
+      sourceHints: [...new Set(matchedSettings.flatMap((setting) => setting.sourceHints))]
+    };
+  });
+
+  return [baseInput, ...perInterestInputs];
+}
+
+function formatSearchInputLabel(input: ContentSearchInput): string {
+  return input.interests.length > 0 ? input.interests.join("/") : "combined request";
 }
 
 function mapSections(

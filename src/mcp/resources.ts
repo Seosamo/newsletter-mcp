@@ -1,10 +1,16 @@
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
+import type { AuthenticatedUser } from "./oauth.js";
 
-export async function listResources(storage: NewsletterStorage) {
+export async function listResources(storage: NewsletterStorage, auth?: AuthenticatedUser) {
   const profiles = await storage.listProfiles();
   const templates = await storage.listTemplates();
   const historyUsers = await storage.listHistoryUsers();
-  const categoryUsers = new Set([...profiles.map((profile) => profile.userId), ...historyUsers]);
+  const visibleProfiles = auth ? profiles.filter((profile) => profile.userId === auth.userId) : profiles;
+  const visibleHistoryUsers = auth ? historyUsers.filter((userId) => userId === auth.userId) : historyUsers;
+  const categoryUsers = new Set([
+    ...visibleProfiles.map((profile) => profile.userId),
+    ...visibleHistoryUsers
+  ]);
 
   return {
     resources: [
@@ -18,7 +24,7 @@ export async function listResources(storage: NewsletterStorage) {
         name: `Newsletter template: ${template.templateId}`,
         mimeType: "application/json"
       })),
-      ...profiles.map((profile) => ({
+      ...visibleProfiles.map((profile) => ({
         uri: `newsletter://profiles/${profile.userId}`,
         name: `Newsletter profile: ${profile.userId}`,
         mimeType: "application/json"
@@ -28,7 +34,7 @@ export async function listResources(storage: NewsletterStorage) {
         name: `Interest tag settings: ${userId}`,
         mimeType: "application/json"
       })),
-      ...historyUsers.map((userId) => ({
+      ...visibleHistoryUsers.map((userId) => ({
         uri: `newsletter://history/${userId}`,
         name: `Newsletter history: ${userId}`,
         mimeType: "application/json"
@@ -64,7 +70,7 @@ export function listResourceTemplates() {
   };
 }
 
-export async function readResource(storage: NewsletterStorage, uri: string) {
+export async function readResource(storage: NewsletterStorage, uri: string, auth?: AuthenticatedUser) {
   const [kind, id] = parseNewsletterUri(uri);
 
   if (kind === "templates" && !id) {
@@ -80,6 +86,7 @@ export async function readResource(storage: NewsletterStorage, uri: string) {
   }
 
   if (kind === "profiles" && id) {
+    assertCanAccessUserResource(id, auth);
     const profile = await storage.getProfile(id);
     if (!profile) {
       throw new Error(`Profile not found: ${id}`);
@@ -88,6 +95,7 @@ export async function readResource(storage: NewsletterStorage, uri: string) {
   }
 
   if (kind === "categories" && id) {
+    assertCanAccessUserResource(id, auth);
     return resourceContents(uri, {
       userId: id,
       settings: await storage.listUserCategorySettings(id)
@@ -95,6 +103,7 @@ export async function readResource(storage: NewsletterStorage, uri: string) {
   }
 
   if (kind === "history" && id) {
+    assertCanAccessUserResource(id, auth);
     return resourceContents(uri, {
       userId: id,
       history: await storage.listHistory(id)
@@ -102,6 +111,13 @@ export async function readResource(storage: NewsletterStorage, uri: string) {
   }
 
   throw new Error(`Unsupported resource URI: ${uri}`);
+}
+
+function assertCanAccessUserResource(userId: string, auth?: AuthenticatedUser): void {
+  if (!auth || auth.userId === userId) {
+    return;
+  }
+  throw new Error("Authenticated user cannot access another user's newsletter resource.");
 }
 
 function resourceContents(uri: string, value: unknown) {

@@ -94,6 +94,37 @@ Authorization: Bearer <token>
 X-MCP-Auth: <token>
 ```
 
+### OAuth / OIDC bearer authentication
+
+Set `OAUTH_ENABLED=true` to use OAuth bearer tokens for per-user preferences. In this mode, user-scoped tools ignore the client-supplied `userId` and use the configured token claim instead. The default user id claim is `sub`.
+
+| Variable | Description |
+|---|---|
+| `OAUTH_ENABLED` | Enables OAuth bearer authentication when `true`. Defaults to enabled if `OAUTH_JWKS_URL` or `OAUTH_ISSUER` is set. |
+| `OAUTH_ISSUER` | Expected token issuer. Also used as the default authorization server in metadata. |
+| `OAUTH_AUTHORIZATION_SERVERS` | Comma-separated authorization server URLs exposed in protected resource metadata. |
+| `OAUTH_JWKS_URL` | JWKS endpoint used to verify JWT access token signatures. If omitted, the server tries issuer discovery. |
+| `OAUTH_AUDIENCE` | Expected JWT `aud`. Defaults to the MCP endpoint URL. |
+| `OAUTH_RESOURCE` | Canonical MCP resource URI. Defaults to the public MCP endpoint URL. |
+| `OAUTH_RESOURCE_METADATA_URL` | Protected resource metadata URL advertised in `WWW-Authenticate`. |
+| `OAUTH_USER_ID_CLAIM` | Claim path used as the storage user id. Defaults to `sub`; dotted paths are supported. |
+| `OAUTH_REQUIRED_SCOPES` | Space- or comma-separated scopes required for every MCP request. |
+| `OAUTH_SCOPES_SUPPORTED` | Space- or comma-separated scopes exposed in protected resource metadata. |
+| `OAUTH_ALLOWED_ALGORITHMS` | Comma-separated RSA JWT signing algorithms: `RS256`, `RS384`, `RS512`. Defaults to `RS256`. |
+
+When OAuth is enabled, clients must send:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+The server exposes protected resource metadata at:
+
+```text
+/.well-known/oauth-protected-resource
+/.well-known/oauth-protected-resource/mcp
+```
+
 ### 콘텐츠 수집
 
 | 변수 | 설명 |

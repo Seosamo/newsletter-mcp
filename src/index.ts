@@ -15,6 +15,7 @@ import { ExternalMcpSearchProvider } from "./providers/ExternalMcpSearchProvider
 import { WebSearchProvider } from "./providers/WebSearchProvider.js";
 import type { ContentProvider } from "./providers/ContentProvider.js";
 import { startMcpServer } from "./mcp/server.js";
+import type { OAuthOptions } from "./mcp/oauth.js";
 import { JsonFileStorage } from "./storage/JsonFileStorage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,7 @@ const endpointPath = process.env.MCP_ENDPOINT_PATH ?? "/mcp";
 const publicBaseUrl = process.env.PUBLIC_BASE_URL;
 const allowedOrigins = parseCsv(process.env.ALLOWED_ORIGINS);
 const authToken = process.env.NEWSLETTER_MCP_AUTH_TOKEN;
+const oauth = buildOAuthOptions();
 
 const storage = new JsonFileStorage(dataDir);
 const catalogEntries = await new ApiCatalogRepository(path.join(dataDir, "apiCatalog.json")).listEntries();
@@ -120,11 +122,16 @@ await startMcpServer(storage, providers, apiCatalogSelector, {
   endpointPath,
   publicBaseUrl,
   allowedOrigins,
-  authToken
+  authToken,
+  oauth
 });
 
 function parseCsv(value: string | undefined): string[] {
   return value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+}
+
+function parseScopeList(value: string | undefined): string[] {
+  return value?.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
 function parseInteger(value: string | undefined, fallback: number): number {
@@ -158,6 +165,42 @@ function firstEnv(...keys: string[]): string | undefined {
     }
   }
   return undefined;
+}
+
+function buildOAuthOptions(): OAuthOptions {
+  const enabled = parseBoolean(
+    process.env.OAUTH_ENABLED,
+    Boolean(firstEnv("OAUTH_JWKS_URL", "OAUTH_ISSUER"))
+  );
+  const serverBaseUrl = publicBaseUrl?.replace(/\/+$/, "") ?? `http://${host}:${port}`;
+  const resource = firstEnv("OAUTH_RESOURCE") ?? `${serverBaseUrl}${endpointPath}`;
+  const issuer = firstEnv("OAUTH_ISSUER");
+  const authorizationServers = parseCsv(process.env.OAUTH_AUTHORIZATION_SERVERS);
+  const requiredScopes = parseScopeList(process.env.OAUTH_REQUIRED_SCOPES);
+  const scopesSupported = parseScopeList(process.env.OAUTH_SCOPES_SUPPORTED);
+
+  return {
+    enabled,
+    issuer,
+    audience: firstEnv("OAUTH_AUDIENCE") ?? resource,
+    jwksUrl: firstEnv("OAUTH_JWKS_URL"),
+    authorizationServers: authorizationServers.length > 0
+      ? authorizationServers
+      : issuer
+        ? [issuer]
+        : [],
+    resource,
+    resourceMetadataUrl: firstEnv("OAUTH_RESOURCE_METADATA_URL") ??
+      `${serverBaseUrl}/.well-known/oauth-protected-resource${endpointPath === "/" ? "" : endpointPath}`,
+    scopesSupported: scopesSupported.length > 0 ? scopesSupported : requiredScopes,
+    requiredScopes,
+    userIdClaim: firstEnv("OAUTH_USER_ID_CLAIM") ?? "sub",
+    allowedAlgorithms: parseCsv(process.env.OAUTH_ALLOWED_ALGORITHMS).length > 0
+      ? parseCsv(process.env.OAUTH_ALLOWED_ALGORITHMS)
+      : ["RS256"],
+    jwksCacheTtlMs: parseInteger(process.env.OAUTH_JWKS_CACHE_TTL_MS, 300000),
+    clockSkewSeconds: parseInteger(process.env.OAUTH_CLOCK_SKEW_SECONDS, 60)
+  };
 }
 
 function searchEnv(usesGeneric: boolean, suffix: string): string | undefined {
