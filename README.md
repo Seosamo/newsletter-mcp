@@ -125,6 +125,27 @@ The server exposes protected resource metadata at:
 /.well-known/oauth-protected-resource/mcp
 ```
 
+### Storage
+
+By default, the server stores profiles, templates, category settings, and newsletter history in JSON files under `data/`. Set `DATABASE_URL` to switch to Postgres-compatible external storage such as Neon, Supabase, RDS, or local PostgreSQL.
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Postgres connection string. When set, Postgres storage is used instead of JSON files. |
+| `POSTGRES_URL` | Alias for `DATABASE_URL`. |
+| `DATABASE_SCHEMA` | Postgres schema name. Defaults to `public`. |
+| `DATABASE_SSL` | Set to `true` or `require` for managed DBs that require TLS; set to `false` for local DBs. |
+| `DATABASE_RUN_MIGRATIONS` | Runs `CREATE TABLE IF NOT EXISTS` migrations on startup. Defaults to `true`. |
+
+Postgres storage keeps lookup keys as columns and stores the domain objects as `jsonb`:
+
+- `newsletter_profiles`
+- `newsletter_templates`
+- `newsletter_category_settings`
+- `newsletter_history`
+
+On first startup with an empty Postgres database, the server seeds newsletter templates from the local `data/templates.json` file.
+
 ### 콘텐츠 수집
 
 | 변수 | 설명 |

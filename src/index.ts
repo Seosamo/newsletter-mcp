@@ -17,6 +17,8 @@ import type { ContentProvider } from "./providers/ContentProvider.js";
 import { startMcpServer } from "./mcp/server.js";
 import type { OAuthOptions } from "./mcp/oauth.js";
 import { JsonFileStorage } from "./storage/JsonFileStorage.js";
+import { PostgresStorage } from "./storage/PostgresStorage.js";
+import type { NewsletterStorage } from "./storage/NewsletterStorage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -32,7 +34,7 @@ const allowedOrigins = parseCsv(process.env.ALLOWED_ORIGINS);
 const authToken = process.env.NEWSLETTER_MCP_AUTH_TOKEN;
 const oauth = buildOAuthOptions();
 
-const storage = new JsonFileStorage(dataDir);
+const storage = await createNewsletterStorage(dataDir);
 const catalogEntries = await new ApiCatalogRepository(path.join(dataDir, "apiCatalog.json")).listEntries();
 const providers: ContentProvider[] = [];
 
@@ -132,6 +134,53 @@ function parseCsv(value: string | undefined): string[] {
 
 function parseScopeList(value: string | undefined): string[] {
   return value?.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) ?? [];
+}
+
+async function createNewsletterStorage(seedDataDir: string): Promise<NewsletterStorage> {
+  const jsonStorage = new JsonFileStorage(seedDataDir);
+  const databaseUrl = firstEnv("DATABASE_URL", "POSTGRES_URL");
+  if (!databaseUrl) {
+    return jsonStorage;
+  }
+
+  const postgresStorage = new PostgresStorage({
+    connectionString: databaseUrl,
+    schema: firstEnv("DATABASE_SCHEMA") ?? "public",
+    ssl: parseDatabaseSsl(process.env.DATABASE_SSL),
+    runMigrations: parseBoolean(process.env.DATABASE_RUN_MIGRATIONS, true)
+  });
+  await seedTemplatesIfEmpty(postgresStorage, jsonStorage);
+  console.error("Using Postgres newsletter storage.");
+  return postgresStorage;
+}
+
+async function seedTemplatesIfEmpty(
+  target: NewsletterStorage,
+  seedSource: NewsletterStorage
+): Promise<void> {
+  const existingTemplates = await target.listTemplates();
+  if (existingTemplates.length > 0) {
+    return;
+  }
+
+  const seedTemplates = await seedSource.listTemplates();
+  for (const template of seedTemplates) {
+    await target.upsertTemplate(template);
+  }
+}
+
+function parseDatabaseSsl(value: string | undefined): false | { rejectUnauthorized: boolean } | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLocaleLowerCase();
+  if (["0", "false", "no", "off", "disable"].includes(normalized)) {
+    return false;
+  }
+  if (["1", "true", "yes", "on", "require"].includes(normalized)) {
+    return { rejectUnauthorized: false };
+  }
+  return undefined;
 }
 
 function parseInteger(value: string | undefined, fallback: number): number {
