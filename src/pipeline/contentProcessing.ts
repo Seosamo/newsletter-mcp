@@ -3,8 +3,10 @@ import type {
   InterestTagSetting,
   Period,
   RankedNewsletterItem,
+  SourcePreference,
   SourceRef
 } from "../domain/types.js";
+import { findMatchingSourcePreference } from "../sources/sourcePreferences.js";
 import { dayDistance } from "./dates.js";
 
 export function filterExcludedKeywords(items: ContentItem[], excludedKeywords: string[]): ContentItem[] {
@@ -49,10 +51,11 @@ export function rankItems(
   interests: string[],
   regions: string[],
   settings: InterestTagSetting[],
-  period: Period
+  period: Period,
+  sourcePreferences: SourcePreference[] = []
 ): RankedNewsletterItem[] {
   return items
-    .map((item) => toRankedItem(item, interests, regions, settings, period))
+    .map((item) => toRankedItem(item, interests, regions, settings, period, sourcePreferences))
     .sort((left, right) => right.importanceScore - left.importanceScore);
 }
 
@@ -82,22 +85,26 @@ function toRankedItem(
   interests: string[],
   regions: string[],
   settings: InterestTagSetting[],
-  period: Period
+  period: Period,
+  sourcePreferences: SourcePreference[]
 ): RankedNewsletterItem {
   const interestScore = scoreInterestMatch(item, interests);
   const recencyScore = scoreRecency(item, period);
   const reliabilityScore = clamp(item.sourceReliability ?? 0.7, 0, 1);
   const regionScore = scoreRegionMatch(item, regions);
   const weightScore = scoreTagWeight(item, settings);
+  const sourcePreferenceMatch = findMatchingSourcePreference(item, sourcePreferences);
+  const sourcePreferenceScore = scoreSourcePreference(sourcePreferenceMatch, sourcePreferences);
   const recommendationScore = item.type === "recommendation" ? 1 : 0.5;
 
   const rawScore =
-    interestScore * 0.35 +
-    recencyScore * 0.25 +
-    reliabilityScore * 0.15 +
-    regionScore * 0.1 +
-    weightScore * 0.1 +
-    recommendationScore * 0.05;
+    interestScore * 0.32 +
+    recencyScore * 0.22 +
+    sourcePreferenceScore * 0.16 +
+    reliabilityScore * 0.12 +
+    regionScore * 0.08 +
+    weightScore * 0.07 +
+    recommendationScore * 0.03;
 
   const importanceScore = Math.round(rawScore * 100);
   const date = item.eventDate ?? item.publishedAt;
@@ -122,7 +129,8 @@ function toRankedItem(
       regionScore,
       weightScore,
       item,
-      selectedEvidenceCount: selectedEvidence.length
+      selectedEvidenceCount: selectedEvidence.length,
+      sourcePreferenceMatch
     }),
     evidence: item.evidence,
     selectedEvidence
@@ -168,6 +176,19 @@ function scoreTagWeight(item: ContentItem, settings: InterestTagSetting[]): numb
   return clamp(Math.max(...matchingWeights) / 2, 0, 1);
 }
 
+function scoreSourcePreference(
+  match: SourcePreference | undefined,
+  preferences: SourcePreference[]
+): number {
+  if (preferences.length === 0) {
+    return 0.5;
+  }
+  if (!match) {
+    return 0.25;
+  }
+  return clamp(match.weight / 2, 0.55, 1);
+}
+
 function buildRankingReason(input: {
   interestScore: number;
   recencyScore: number;
@@ -175,6 +196,7 @@ function buildRankingReason(input: {
   weightScore: number;
   item: ContentItem;
   selectedEvidenceCount: number;
+  sourcePreferenceMatch?: SourcePreference;
 }): string {
   const reasons = [];
   if (input.interestScore >= 0.9) {
@@ -188,6 +210,9 @@ function buildRankingReason(input: {
   }
   if (input.weightScore > 0.5) {
     reasons.push("사용자 태그 가중치 반영");
+  }
+  if (input.sourcePreferenceMatch) {
+    reasons.push(`선호 출처 반영: ${input.sourcePreferenceMatch.label}`);
   }
   if (input.item.type === "recommendation") {
     reasons.push("추천 섹션 적합");

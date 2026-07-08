@@ -146,6 +146,24 @@ Postgres storage keeps lookup keys as columns and stores the domain objects as `
 
 On first startup with an empty Postgres database, the server seeds newsletter templates from the local `data/templates.json` file.
 
+### Source Preferences
+
+Use source preferences to prioritize trusted sources for a user or for a specific interest tag. The existing `recommend_api_connectors` tool now also returns a `Recommended Sources` section. Store selected sources with `update_user_preferences` for global preferences, or `upsert_user_category_setting` for category-specific preferences.
+
+```json
+{
+  "userId": "default",
+  "patch": {
+    "sourceLinks": [
+      "https://openai.com/blog",
+      "https://techcrunch.com/feed/"
+    ]
+  }
+}
+```
+
+Direct links are normalized into `sourcePreferences` with domains, RSS URLs, and `site:` query hints. During draft generation, preferred RSS feeds are collected directly and preferred domains are searched/ranked before general fallback results.
+
 ### 콘텐츠 수집
 
 | 변수 | 설명 |

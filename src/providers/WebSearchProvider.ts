@@ -3,6 +3,7 @@ import type { ContentItem, ContentProviderResult, ContentSearchInput } from "../
 import type { ContentProvider } from "./ContentProvider.js";
 import { appendSelectedEvidenceChunks, chunkPageText, selectRelevantPageChunks } from "./evidenceChunks.js";
 import { type FetchLike, HtmlArticleExtractor } from "./HtmlArticleExtractor.js";
+import { preferredDomains, preferredQueryHints } from "../sources/sourcePreferences.js";
 
 type WebSearchProviderOptions = {
   apiKey?: string;
@@ -96,7 +97,7 @@ export class WebSearchProvider implements ContentProvider {
     }
 
     const warnings: string[] = [];
-    const searchResults = await this.fetchSearchResults(query, input, warnings);
+    const searchResults = await this.fetchSearchResultsWithPreference(query, input, warnings);
     const items: ContentItem[] = [];
     let selectedChunksTotal = 0;
 
@@ -175,9 +176,11 @@ export class WebSearchProvider implements ContentProvider {
   private async fetchSearchResults(
     query: string,
     input: ContentSearchInput,
-    warnings: string[]
+    warnings: string[],
+    includeDomains?: string[]
   ): Promise<TavilySearchResult[]> {
     const url = new URL(this.endpoint);
+    const domains = this.resolveIncludeDomains(includeDomains);
     const body = {
       query,
       search_depth: this.searchDepth,
@@ -188,7 +191,7 @@ export class WebSearchProvider implements ContentProvider {
       include_answer: false,
       include_raw_content: this.includeRawContent,
       include_images: true,
-      include_domains: this.allowedDomains.length > 0 ? this.allowedDomains : undefined,
+      include_domains: domains.length > 0 ? domains : undefined,
       exclude_domains: this.blockedDomains.length > 0 ? this.blockedDomains : undefined
     };
 
@@ -220,6 +223,40 @@ export class WebSearchProvider implements ContentProvider {
     }
   }
 
+  private async fetchSearchResultsWithPreference(
+    query: string,
+    input: ContentSearchInput,
+    warnings: string[]
+  ): Promise<TavilySearchResult[]> {
+    const domains = preferredDomains(input.sourcePreferences);
+    const queryHints = preferredQueryHints(input.sourcePreferences);
+    if (domains.length === 0 && queryHints.length === 0) {
+      return this.fetchSearchResults(query, input, warnings);
+    }
+
+    const preferredQuery = buildPreferredQuery(query, queryHints);
+    const preferred = await this.fetchSearchResults(preferredQuery, input, warnings, domains);
+    if (preferred.length >= this.maxResults) {
+      return uniqueResults(preferred).slice(0, this.maxResults);
+    }
+
+    const fallback = await this.fetchSearchResults(query, input, warnings);
+    return uniqueResults([...preferred, ...fallback]).slice(0, this.maxResults);
+  }
+
+  private resolveIncludeDomains(includeDomains?: string[]): string[] {
+    const normalized = normalizeDomains(includeDomains ?? []);
+    if (normalized.length === 0) {
+      return this.allowedDomains;
+    }
+    if (this.allowedDomains.length === 0) {
+      return normalized;
+    }
+    return normalized.filter((domain) =>
+      this.allowedDomains.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`))
+    );
+  }
+
   private async tryExtract(url: string, warnings: string[]) {
     try {
       return await this.articleExtractor.extract(url);
@@ -249,6 +286,28 @@ function buildQuery(input: ContentSearchInput): string {
   ])
     .slice(0, 12)
     .join(" ");
+}
+
+function buildPreferredQuery(baseQuery: string, queryHints: string[]): string {
+  return unique([
+    baseQuery,
+    ...queryHints.slice(0, 4)
+  ])
+    .join(" ");
+}
+
+function uniqueResults(results: TavilySearchResult[]): TavilySearchResult[] {
+  const seen = new Set<string>();
+  const uniqueItems: TavilySearchResult[] = [];
+  for (const result of results) {
+    const key = result.url?.trim().toLocaleLowerCase() || result.title?.trim().toLocaleLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    uniqueItems.push(result);
+  }
+  return uniqueItems;
 }
 
 function unique(values: string[]): string[] {

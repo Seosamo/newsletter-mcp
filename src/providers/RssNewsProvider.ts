@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import Parser from "rss-parser";
 import type { ContentItem, ContentProviderResult, ContentSearchInput } from "../domain/types.js";
 import type { ContentProvider } from "./ContentProvider.js";
+import { preferredRssUrls } from "../sources/sourcePreferences.js";
 
 type RssItem = {
   title?: string;
@@ -24,7 +25,10 @@ export class RssNewsProvider implements ContentProvider {
   private readonly parser = new Parser<Record<string, unknown>, RssItem>();
 
   async search(input: ContentSearchInput): Promise<ContentProviderResult> {
-    const rssUrls = input.sourceHints.filter((hint) => /^https?:\/\//i.test(hint));
+    const rssUrls = [...new Set([
+      ...input.sourceHints.filter((hint) => /^https?:\/\//i.test(hint)),
+      ...preferredRssUrls(input.sourcePreferences)
+    ])];
     const items: ContentItem[] = [];
     const warnings: string[] = [];
 

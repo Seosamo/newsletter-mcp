@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiCatalogSelector } from "../src/catalog/ApiCatalogSelector.js";
 import { parseApiCatalogMarkdown } from "../src/catalog/apiCatalogParser.js";
+import { recommendSourcePreferences } from "../src/catalog/sourceCatalog.js";
 import type { ApiCatalogEntry } from "../src/catalog/types.js";
 import { PublicApiDomainProvider } from "../src/providers/PublicApiDomainProvider.js";
 import type { FetchLike } from "../src/providers/HtmlArticleExtractor.js";
@@ -60,6 +61,20 @@ describe("API catalog parser and selector", () => {
 
     const eventbrite = recommendations.find((item) => item.entry.connectorId === "eventbrite");
     expect(eventbrite?.callable).toBe(true);
+  });
+
+  it("recommends preferred content sources for technology interests", () => {
+    const recommendations = recommendSourcePreferences({
+      interests: ["AI", "technology"],
+      regions: ["US"],
+      keywords: ["developer tools"]
+    }, 8);
+    const labels = recommendations.map((recommendation) => recommendation.source.label);
+
+    expect(labels).toContain("OpenAI Blog");
+    expect(labels).toContain("TechCrunch");
+    expect(labels).toContain("arXiv");
+    expect(recommendations[0].reasons.join(" ")).toMatch(/matched|related/);
   });
 });
 

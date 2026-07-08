@@ -100,6 +100,73 @@ describe("WebSearchProvider", () => {
     expect(result.warnings.some((warning) => warning.includes("HTML extraction failed"))).toBe(true);
   });
 
+  it("searches preferred domains first and falls back to general Tavily results", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const provider = new WebSearchProvider({
+      apiKey: "test-key",
+      maxResults: 2,
+      maxPagesToExtract: 0,
+      fetchFn: async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        calls.push(body);
+        const includeDomains = body.include_domains as string[] | undefined;
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              results: includeDomains?.includes("openai.com")
+                ? [
+                    {
+                      title: "OpenAI platform update",
+                      url: "https://openai.com/blog/platform",
+                      content: "OpenAI released a platform update.",
+                      published_date: "2026-06-22"
+                    }
+                  ]
+                : [
+                    {
+                      title: "General AI market update",
+                      url: "https://example.com/ai-market",
+                      content: "AI market news from a general source.",
+                      published_date: "2026-06-22"
+                    }
+                  ]
+            };
+          },
+          async text() {
+            return "";
+          }
+        };
+      }
+    });
+
+    const result = await provider.search({
+      ...makeInput(),
+      interests: ["AI"],
+      regions: [],
+      keywords: ["AI"],
+      sourcePreferences: [
+        {
+          label: "OpenAI Blog",
+          domains: ["openai.com"],
+          rssUrls: [],
+          queryHints: ["site:openai.com"],
+          weight: 1.5,
+          enabled: true
+        }
+      ]
+    });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({
+      include_domains: ["openai.com"]
+    });
+    expect(String(calls[0].query)).toContain("site:openai.com");
+    expect(calls[1].include_domains).toBeUndefined();
+    expect(result.items.map((item) => item.sourceName)).toEqual(["openai.com", "example.com"]);
+  });
+
   it("returns a warning instead of searching when no API key is configured", async () => {
     const provider = new WebSearchProvider({
       apiKey: undefined,
@@ -157,6 +224,65 @@ describe("WebSearchProvider", () => {
       sourceName: "Example Search",
       interestTags: ["Japan"]
     });
+  });
+
+  it("runs preferred external MCP queries before general fallback queries", async () => {
+    const calls: ExternalMcpToolCall[] = [];
+    const provider = new ExternalMcpSearchProvider({
+      command: "node",
+      args: ["fake-search-server.js"],
+      toolName: "google_search",
+      queryParameter: "q",
+      maxResultsParameter: "limit",
+      maxResults: 2,
+      toolCaller: async (call) => {
+        calls.push(call);
+        const query = String(call.toolArgs.q);
+        return {
+          structuredContent: {
+            results: query.includes("site:openai.com")
+              ? [
+                  {
+                    title: "OpenAI platform update",
+                    url: "https://openai.com/blog/platform",
+                    snippet: "OpenAI released a platform update.",
+                    source: "OpenAI Blog"
+                  }
+                ]
+              : [
+                  {
+                    title: "General AI update",
+                    url: "https://example.com/ai",
+                    snippet: "General AI news.",
+                    source: "Example Search"
+                  }
+                ]
+          }
+        };
+      }
+    });
+
+    const result = await provider.search({
+      ...makeInput(),
+      interests: ["AI"],
+      regions: [],
+      keywords: ["AI"],
+      sourcePreferences: [
+        {
+          label: "OpenAI Blog",
+          domains: ["openai.com"],
+          rssUrls: [],
+          queryHints: ["site:openai.com"],
+          weight: 1.5,
+          enabled: true
+        }
+      ]
+    });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].toolArgs.q).toBe("AI site:openai.com");
+    expect(calls[1].toolArgs.q).toBe("AI");
+    expect(result.items.map((item) => item.sourceName)).toEqual(["OpenAI Blog", "Example Search"]);
   });
 
   it("passes configured noapi result limits and parses noapi text output", async () => {

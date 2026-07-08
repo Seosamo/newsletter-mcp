@@ -10,6 +10,15 @@ export type NewsletterFormatPreference = {
   includeRecommendations: boolean;
 };
 
+export type SourcePreference = {
+  label: string;
+  domains: string[];
+  rssUrls: string[];
+  queryHints: string[];
+  weight: number;
+  enabled: boolean;
+};
+
 export type UserSchedule = {
   frequency: NewsletterFrequency;
   timezone: string;
@@ -25,6 +34,7 @@ export type UserProfile = {
   schedule: UserSchedule;
   excludedKeywords: string[];
   formatPreference: NewsletterFormatPreference;
+  sourcePreferences?: SourcePreference[];
   updatedAt: string;
 };
 
@@ -33,6 +43,7 @@ export type InterestTagSetting = {
   aliases: string[];
   keywords: string[];
   sourceHints: string[];
+  sourcePreferences?: SourcePreference[];
   weight: number;
   updatedAt: string;
 };
@@ -123,6 +134,7 @@ export type ContentSearchInput = {
   regions: string[];
   keywords: string[];
   sourceHints: string[];
+  sourcePreferences?: SourcePreference[];
   period: Period;
   excludedKeywords: string[];
 };

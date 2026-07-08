@@ -31,6 +31,7 @@ export function createDefaultProfile(userId: string, now = new Date()): UserProf
     schedule: DEFAULT_SCHEDULE,
     excludedKeywords: [],
     formatPreference: DEFAULT_FORMAT,
+    sourcePreferences: [],
     updatedAt: now.toISOString()
   };
 }

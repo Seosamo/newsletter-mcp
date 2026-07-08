@@ -182,6 +182,201 @@ describe("chat-based newsletter MCP MVP", () => {
     ]);
   });
 
+  it("normalizes user-provided source links into source preferences through MCP tools", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-06-22T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    await callTool(storage, generator, selector, "update_user_preferences", {
+      userId: "source-user",
+      patch: {
+        sourceLinks: [
+          "https://openai.com/blog",
+          "https://techcrunch.com/feed/",
+          "not-a-url"
+        ]
+      }
+    });
+    await callTool(storage, generator, selector, "upsert_user_category_setting", {
+      userId: "source-user",
+      setting: {
+        label: "AI",
+        aliases: ["artificial intelligence"],
+        keywords: ["LLM"],
+        sourceLinks: ["https://arxiv.org"],
+        sourcePreferences: [
+          {
+            label: "TechCrunch",
+            domains: ["techcrunch.com"],
+            rssUrls: ["https://techcrunch.com/feed/"],
+            queryHints: ["site:techcrunch.com AI"],
+            weight: 1.3,
+            enabled: true
+          }
+        ],
+        sourceHints: [],
+        weight: 1
+      }
+    });
+
+    const profile = await storage.getProfile("source-user");
+    const settings = await storage.listUserCategorySettings("source-user");
+
+    expect(profile?.sourcePreferences?.map((preference) => preference.label)).toEqual(["Openai", "Techcrunch"]);
+    expect(profile?.sourcePreferences?.find((preference) => preference.label === "Techcrunch")?.rssUrls).toEqual([
+      "https://techcrunch.com/feed/"
+    ]);
+    expect(settings[0].sourcePreferences?.map((preference) => preference.label)).toEqual(["TechCrunch", "Arxiv"]);
+    expect(settings[0].sourcePreferences?.find((preference) => preference.label === "Arxiv")?.queryHints).toEqual([
+      "site:arxiv.org"
+    ]);
+  });
+
+  it("passes global and per-interest source preferences into fan-out searches", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("source-fanout", {
+          sourcePreferences: [
+            {
+              label: "OpenAI Blog",
+              domains: ["openai.com"],
+              rssUrls: ["https://openai.com/blog/rss.xml"],
+              queryHints: ["site:openai.com"],
+              weight: 1.5,
+              enabled: true
+            }
+          ]
+        })
+      ],
+      categorySettings: {
+        "source-fanout": [
+          {
+            label: "AI",
+            aliases: [],
+            keywords: ["LLM"],
+            sourceHints: [],
+            sourcePreferences: [
+              {
+                label: "TechCrunch",
+                domains: ["techcrunch.com"],
+                rssUrls: ["https://techcrunch.com/feed/"],
+                queryHints: ["site:techcrunch.com AI"],
+                weight: 1.3,
+                enabled: true
+              }
+            ],
+            weight: 1,
+            updatedAt: "2026-06-22T00:00:00.000Z"
+          },
+          {
+            label: "Books",
+            aliases: [],
+            keywords: ["publishing"],
+            sourceHints: [],
+            sourcePreferences: [
+              {
+                label: "Publishers Weekly",
+                domains: ["publishersweekly.com"],
+                rssUrls: [],
+                queryHints: ["site:publishersweekly.com"],
+                weight: 1.2,
+                enabled: true
+              }
+            ],
+            weight: 1,
+            updatedAt: "2026-06-22T00:00:00.000Z"
+          }
+        ]
+      }
+    });
+    const provider = new RecordingProvider();
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [provider],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    await generator.generate({
+      userId: "source-fanout",
+      userMessage: "AI and books newsletter",
+      interests: ["AI", "Books"],
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-22"
+      }
+    });
+
+    expect(provider.calls[0].sourcePreferences?.map((preference) => preference.label)).toEqual([
+      "OpenAI Blog",
+      "TechCrunch",
+      "Publishers Weekly"
+    ]);
+    expect(provider.calls[1].sourcePreferences?.map((preference) => preference.label)).toEqual([
+      "OpenAI Blog",
+      "TechCrunch"
+    ]);
+    expect(provider.calls[2].sourcePreferences?.map((preference) => preference.label)).toEqual([
+      "OpenAI Blog",
+      "Publishers Weekly"
+    ]);
+  });
+
+  it("boosts preferred source items without changing the draft output shape", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("preferred-rank", {
+          interests: ["AI"],
+          sourcePreferences: [
+            {
+              label: "OpenAI Blog",
+              domains: ["openai.com"],
+              rssUrls: [],
+              queryHints: ["site:openai.com"],
+              weight: 1.5,
+              enabled: true
+            }
+          ]
+        })
+      ],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider([
+        {
+          ...makeContentItem("general-ai", "AI model release", "https://example.com/ai"),
+          interestTags: ["AI"],
+          keywords: ["AI"],
+          sourceName: "Example",
+          sourceReliability: 0.9
+        },
+        {
+          ...makeContentItem("openai-ai", "AI model release from OpenAI", "https://openai.com/blog/ai"),
+          interestTags: ["AI"],
+          keywords: ["AI"],
+          sourceName: "OpenAI Blog",
+          sourceReliability: 0.7
+        }
+      ])],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    const draft = await generator.generate({
+      userId: "preferred-rank",
+      userMessage: "AI newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+
+    expect(draft.sections.top_stories[0].sourceName).toBe("OpenAI Blog");
+    expect(draft.sections.top_stories[0].rankingReason).toContain("선호 출처 반영: OpenAI Blog");
+  });
+
   it("filters excluded keywords and deduplicates equivalent URLs", async () => {
     const storage = await createStorage({
       profiles: [
@@ -240,6 +435,39 @@ describe("chat-based newsletter MCP MVP", () => {
 
     expect(draft.warnings.some((warning) => warning.includes("RSS provider failed"))).toBe(true);
     expect(draft.draftId).toMatch(/^draft_/);
+  });
+
+  it("collects RSS URLs from source preferences", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("rss-source-preference", {
+          interests: ["AI"],
+          sourcePreferences: [
+            {
+              label: "Broken Feed",
+              domains: ["127.0.0.1"],
+              rssUrls: ["http://127.0.0.1:9/feed.xml"],
+              queryHints: ["site:127.0.0.1"],
+              weight: 1.2,
+              enabled: true
+            }
+          ]
+        })
+      ],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new RssNewsProvider()],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    const draft = await generator.generate({
+      userId: "rss-source-preference",
+      userMessage: "AI newsletter"
+    });
+
+    expect(draft.warnings.some((warning) => warning.includes("http://127.0.0.1:9/feed.xml"))).toBe(true);
   });
 
   it("caps selected page evidence chunks across a generated draft", async () => {
@@ -350,6 +578,27 @@ describe("chat-based newsletter MCP MVP", () => {
     ]);
     expect(getResult.content[0].text).toContain("Style Guide");
     expect(getResult.content[0].text).toContain("중요도 순으로 최대 5개를 쓴다.");
+  });
+
+  it("includes source preference recommendations in connector recommendations", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-06-22T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    const result = await callTool(storage, generator, selector, "recommend_api_connectors", {
+      userId: "default",
+      interests: ["AI", "technology"],
+      regions: ["US"],
+      keywords: ["developer tools"]
+    });
+
+    expect(result.content[0].text).toContain("## Recommended Sources");
+    expect(result.content[0].text).toContain("OpenAI Blog");
+    expect(result.content[0].text).toContain("TechCrunch");
+    expect(result.content[0].text).toContain("arXiv");
   });
 
   it("uses custom template rules in AI editing instructions for generated drafts", async () => {

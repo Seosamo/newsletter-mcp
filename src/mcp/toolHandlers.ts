@@ -1,11 +1,17 @@
 import { z } from "zod";
 import type { ApiConnectorRecommendation } from "../catalog/types.js";
 import { ApiCatalogSelector } from "../catalog/ApiCatalogSelector.js";
+import { recommendSourcePreferences, type SourceRecommendation } from "../catalog/sourceCatalog.js";
 import { createDefaultProfile, DEFAULT_TEMPLATE_ID, DEFAULT_USER_ID } from "../domain/defaults.js";
-import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterOutline, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
+import type { InterestTagSetting, NewsletterDraft, NewsletterEditorInstructions, NewsletterFormatPreference, NewsletterHistoryEntry, NewsletterOutline, NewsletterSectionId, NewsletterSectionTemplate, NewsletterTemplate, RankedNewsletterItem, SourcePreference, SourceRef, UserProfile, UserSchedule } from "../domain/types.js";
 import { NewsletterDraftGenerator } from "../pipeline/draftGenerator.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
 import type { AuthenticatedUser } from "./oauth.js";
+import {
+  mergeSourcePreferences,
+  normalizeSourceLinks,
+  normalizeSourcePreferences
+} from "../sources/sourcePreferences.js";
 
 type ToolResult = {
   content: Array<{
@@ -135,7 +141,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "recommend_api_connectors",
-        description: `Recommends public API connector candidates for user interests using ${SERVICE_NAME_FIXED}.`,
+        description: `Recommends public API connector and preferred content source candidates for user interests using ${SERVICE_NAME_FIXED}.`,
         annotations: readOnlyAnnotation("Recommend API Connectors"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
@@ -223,7 +229,8 @@ export async function callTool(
       const input = recommendApiConnectorsSchema.parse(scopedArgs);
       return textResult(formatApiConnectorRecommendations(
         input.userId,
-        apiCatalogSelector.select(input, 8)
+        apiCatalogSelector.select(input, 8),
+        recommendSourcePreferences(input, 8)
       ));
     }
     default:
@@ -282,6 +289,7 @@ function formatProfile(profile: UserProfile): string {
     `- **Schedule**: ${scheduleStr}`,
     `- **Format**: ${fmt.length}, commentary: ${fmt.includeCommentary ? "yes" : "no"}, recommendations: ${fmt.includeRecommendations ? "yes" : "no"}`,
     `- **Excluded Keywords**: ${profile.excludedKeywords.join(", ") || "(none)"}`,
+    `- **Source Preferences**: ${formatSourcePreferenceSummary(profile.sourcePreferences)}`,
     `- **Updated**: ${profile.updatedAt}`,
   ].join("\n");
 }
@@ -335,9 +343,22 @@ function formatCategorySetting(setting: InterestTagSetting): string {
     `- **Aliases**: ${setting.aliases.join(", ") || "(none)"}`,
     `- **Keywords**: ${setting.keywords.join(", ") || "(none)"}`,
     `- **Source Hints**: ${setting.sourceHints.join(", ") || "(none)"}`,
+    `- **Source Preferences**: ${formatSourcePreferenceSummary(setting.sourcePreferences)}`,
     `- **Weight**: ${setting.weight}`,
     `- **Updated**: ${setting.updatedAt}`,
   ].join("\n");
+}
+
+function formatSourcePreferenceSummary(preferences: SourcePreference[] | undefined): string {
+  if (!preferences || preferences.length === 0) {
+    return "(none)";
+  }
+  return preferences
+    .map((preference) => {
+      const targets = [...preference.domains, ...preference.rssUrls].slice(0, 3).join(", ");
+      return targets ? `${preference.label} (${targets})` : preference.label;
+    })
+    .join("; ");
 }
 
 function formatHistoryEntry(entry: NewsletterHistoryEntry): string {
@@ -483,16 +504,14 @@ function formatEditorInstructions(instructions: NewsletterEditorInstructions): s
   ].filter(Boolean).join("\n");
 }
 
-function formatApiConnectorRecommendations(userId: string, recommendations: ApiConnectorRecommendation[]): string {
-  if (recommendations.length === 0) {
-    return [
-      `## API Connector Recommendations for \`${userId}\``,
-      "",
-      "_No relevant public API candidates were found._"
-    ].join("\n");
-  }
-
-  const body = recommendations.map((recommendation, index) => {
+function formatApiConnectorRecommendations(
+  userId: string,
+  recommendations: ApiConnectorRecommendation[],
+  sourceRecommendations: SourceRecommendation[]
+): string {
+  const apiBody = recommendations.length === 0
+    ? "_No relevant public API candidates were found._"
+    : recommendations.map((recommendation, index) => {
     const { entry } = recommendation;
     const status = recommendation.callable
       ? "callable"
@@ -513,10 +532,42 @@ function formatApiConnectorRecommendations(userId: string, recommendations: ApiC
       `   - Score: ${recommendation.score}`,
       `   - Reason: ${recommendation.reasons.join("; ") || "catalog match"}`
     ].join("\n");
-  });
+  }).join("\n\n");
 
   return [
     `## API Connector Recommendations for \`${userId}\``,
+    "",
+    apiBody,
+    "",
+    formatSourceRecommendations(sourceRecommendations)
+  ].join("\n\n");
+}
+
+function formatSourceRecommendations(recommendations: SourceRecommendation[]): string {
+  if (recommendations.length === 0) {
+    return [
+      "## Recommended Sources",
+      "",
+      "_No relevant preferred source candidates were found._"
+    ].join("\n");
+  }
+
+  const body = recommendations.map((recommendation, index) => {
+    const { source } = recommendation;
+    return [
+      `${index + 1}. **${source.label}**`,
+      `   - Description: ${recommendation.description}`,
+      `   - Domains: ${source.domains.join(", ") || "none"}`,
+      `   - RSS: ${source.rssUrls.join(", ") || "none"}`,
+      `   - Query hints: ${source.queryHints.join(", ") || "none"}`,
+      "   - Callable: yes",
+      `   - Score: ${recommendation.score}`,
+      `   - Reason: ${recommendation.reasons.join("; ") || "source catalog match"}`
+    ].join("\n");
+  });
+
+  return [
+    "## Recommended Sources",
     "",
     ...body
   ].join("\n\n");
@@ -584,13 +635,24 @@ const formatPatchSchema = z.object({
   includeRecommendations: z.boolean().optional()
 });
 
+const sourcePreferenceInputSchema = z.object({
+  label: z.string().optional(),
+  domains: z.array(z.string()).default([]),
+  rssUrls: z.array(z.string()).default([]),
+  queryHints: z.array(z.string()).default([]),
+  weight: z.number().min(0).max(2).default(1.25),
+  enabled: z.boolean().default(true)
+});
+
 const profilePatchSchema = z.object({
   interests: z.array(z.string()).optional(),
   regions: z.array(z.string()).optional(),
   preferredTone: z.enum(["casual", "professional", "friendly", "analytical"]).optional(),
   schedule: schedulePatchSchema.optional(),
   excludedKeywords: z.array(z.string()).optional(),
-  formatPreference: formatPatchSchema.optional()
+  formatPreference: formatPatchSchema.optional(),
+  sourcePreferences: z.array(sourcePreferenceInputSchema).optional(),
+  sourceLinks: z.array(z.string()).optional()
 });
 
 const updatePreferencesSchema = z.object({
@@ -604,10 +666,20 @@ const categorySettingSchema = z.object({
   aliases: z.array(z.string()).default([]),
   keywords: z.array(z.string()).default([]),
   sourceHints: z.array(z.string()).default([]),
+  sourcePreferences: z.array(sourcePreferenceInputSchema).default([]),
+  sourceLinks: z.array(z.string()).default([]),
   weight: z.number().min(0).max(2).default(1),
   updatedAt: z.string().optional()
 }).transform((setting): InterestTagSetting => ({
-  ...setting,
+  label: setting.label,
+  aliases: normalizeList(setting.aliases),
+  keywords: normalizeList(setting.keywords),
+  sourceHints: normalizeList(setting.sourceHints),
+  sourcePreferences: mergeSourcePreferences(
+    normalizeSourcePreferences(setting.sourcePreferences),
+    normalizeSourceLinks(setting.sourceLinks)
+  ),
+  weight: setting.weight,
   updatedAt: setting.updatedAt ?? new Date().toISOString()
 }));
 
@@ -658,6 +730,13 @@ function mergeProfile(profile: UserProfile, patch: z.infer<typeof profilePatchSc
     ...profile.formatPreference,
     ...patch.formatPreference
   };
+  const sourcePatch = mergeSourcePreferences(
+    normalizeSourcePreferences(patch.sourcePreferences),
+    normalizeSourceLinks(patch.sourceLinks)
+  );
+  const nextSourcePreferences = sourcePatch.length > 0
+    ? mergeSourcePreferences(normalizeSourcePreferences(profile.sourcePreferences), sourcePatch)
+    : normalizeSourcePreferences(profile.sourcePreferences);
 
   return {
     ...profile,
@@ -667,6 +746,7 @@ function mergeProfile(profile: UserProfile, patch: z.infer<typeof profilePatchSc
     schedule: nextSchedule,
     excludedKeywords: patch.excludedKeywords ? normalizeList(patch.excludedKeywords) : profile.excludedKeywords,
     formatPreference: nextFormat,
+    sourcePreferences: nextSourcePreferences,
     updatedAt: new Date().toISOString()
   };
 }

@@ -12,10 +12,16 @@ import type {
   NewsletterSectionId,
   NewsletterTemplate,
   RankedNewsletterItem,
+  SourcePreference,
   UserProfile
 } from "../domain/types.js";
 import type { ContentProvider } from "../providers/ContentProvider.js";
 import type { NewsletterStorage } from "../storage/NewsletterStorage.js";
+import {
+  mergeSourcePreferences,
+  normalizeSourcePreferences,
+  sourcePreferencesFromHints
+} from "../sources/sourcePreferences.js";
 import {
   buildSourceRefs,
   deduplicateItems,
@@ -51,6 +57,8 @@ export class NewsletterDraftGenerator {
     const matchedSettings = matchSettings(interests, settings);
     const keywords = buildKeywords(interests, matchedSettings);
     const sourceHints = [...new Set(matchedSettings.flatMap((setting) => setting.sourceHints))];
+    const globalSourcePreferences = normalizeSourcePreferences(profile.sourcePreferences);
+    const sourcePreferences = buildSourcePreferences(globalSourcePreferences, matchedSettings, sourceHints);
     const warnings: string[] = [];
 
     if (interests.length === 0) {
@@ -63,10 +71,11 @@ export class NewsletterDraftGenerator {
       regions,
       keywords,
       sourceHints,
+      sourcePreferences,
       period,
       excludedKeywords: profile.excludedKeywords
     };
-    const searchInputs = buildSearchInputs(searchInput, interests, settings);
+    const searchInputs = buildSearchInputs(searchInput, interests, settings, globalSourcePreferences);
 
     const providerResults = await Promise.all(
       this.providers.flatMap((provider) =>
@@ -91,7 +100,7 @@ export class NewsletterDraftGenerator {
       period
     );
     const ranked = capSelectedEvidenceBudget(
-      rankItems(filtered, interests, regions, matchedSettings, period),
+      rankItems(filtered, interests, regions, matchedSettings, period, sourcePreferences),
       8
     );
     const sections = mapSections(ranked, template, formatPreference);
@@ -201,7 +210,8 @@ function buildKeywords(interests: string[], settings: InterestTagSetting[]): str
 function buildSearchInputs(
   baseInput: ContentSearchInput,
   interests: string[],
-  settings: InterestTagSetting[]
+  settings: InterestTagSetting[],
+  globalSourcePreferences: SourcePreference[]
 ): ContentSearchInput[] {
   if (interests.length <= 1) {
     return [baseInput];
@@ -209,15 +219,45 @@ function buildSearchInputs(
 
   const perInterestInputs = interests.map((interest) => {
     const matchedSettings = matchSettings([interest], settings);
+    const sourceHints = [...new Set(matchedSettings.flatMap((setting) => setting.sourceHints))];
     return {
       ...baseInput,
       interests: [interest],
       keywords: buildKeywords([interest], matchedSettings),
-      sourceHints: [...new Set(matchedSettings.flatMap((setting) => setting.sourceHints))]
+      sourceHints,
+      sourcePreferences: buildSourcePreferencesFromParts(
+        globalSourcePreferences,
+        matchedSettings,
+        sourceHints
+      )
     };
   });
 
   return [baseInput, ...perInterestInputs];
+}
+
+function buildSourcePreferences(
+  globalPreferences: SourcePreference[],
+  settings: InterestTagSetting[],
+  sourceHints: string[]
+): SourcePreference[] {
+  return buildSourcePreferencesFromParts(
+    globalPreferences,
+    settings,
+    sourceHints
+  );
+}
+
+function buildSourcePreferencesFromParts(
+  globalPreferences: SourcePreference[],
+  settings: InterestTagSetting[],
+  sourceHints: string[]
+): SourcePreference[] {
+  return mergeSourcePreferences(
+    globalPreferences,
+    ...settings.map((setting) => normalizeSourcePreferences(setting.sourcePreferences)),
+    sourcePreferencesFromHints(sourceHints)
+  );
 }
 
 function formatSearchInputLabel(input: ContentSearchInput): string {

@@ -8,6 +8,7 @@ import {
   chunkPageText,
   selectRelevantPageChunks
 } from "./evidenceChunks.js";
+import { preferredQueryHints } from "../sources/sourcePreferences.js";
 
 export type ExternalMcpToolCall = {
   command?: string;
@@ -101,29 +102,9 @@ export class ExternalMcpSearchProvider implements ContentProvider {
       };
     }
 
-    const toolArgs: Record<string, unknown> = {
-      [this.queryParameter]: query
-    };
-    if (this.maxResultsParameter) {
-      toolArgs[this.maxResultsParameter] = this.maxResults;
-    }
-    if (this.regionParameter && input.regions[0]) {
-      toolArgs[this.regionParameter] = input.regions[0];
-    }
-
     try {
-      const result = await this.toolCaller({
-        command: this.command,
-        args: this.args,
-        cwd: this.cwd,
-        env: buildChildEnv(this.env),
-        toolName: this.toolName,
-        toolArgs,
-        timeoutMs: this.timeoutMs
-      });
-      const normalized = normalizeMcpSearchResult(result, input, this.maxResults);
-      const failureMessage = normalized.length === 0 ? extractFailureMessage(result) : undefined;
-      const warnings = failureMessage ? [failureMessage] : [];
+      const warnings: string[] = [];
+      const normalized = await this.searchWithPreference(query, input, warnings);
       return {
         items: await this.enrichWithVisitedPages(normalized, warnings, input),
         warnings
@@ -134,6 +115,57 @@ export class ExternalMcpSearchProvider implements ContentProvider {
         warnings: [`External MCP search failed: ${error instanceof Error ? error.message : String(error)}`]
       };
     }
+  }
+
+  private async searchWithPreference(
+    query: string,
+    input: ContentSearchInput,
+    warnings: string[]
+  ): Promise<ContentItem[]> {
+    const preferredQuery = buildPreferredQuery(input, query);
+    if (!preferredQuery || preferredQuery === query) {
+      return this.searchOnce(query, input, warnings);
+    }
+
+    const preferred = await this.searchOnce(preferredQuery, input, warnings);
+    if (preferred.length >= this.maxResults) {
+      return uniqueItems(preferred).slice(0, this.maxResults);
+    }
+
+    const fallback = await this.searchOnce(query, input, warnings);
+    return uniqueItems([...preferred, ...fallback]).slice(0, this.maxResults);
+  }
+
+  private async searchOnce(
+    query: string,
+    input: ContentSearchInput,
+    warnings: string[]
+  ): Promise<ContentItem[]> {
+    const toolArgs: Record<string, unknown> = {
+      [this.queryParameter]: query
+    };
+    if (this.maxResultsParameter) {
+      toolArgs[this.maxResultsParameter] = this.maxResults;
+    }
+    if (this.regionParameter && input.regions[0]) {
+      toolArgs[this.regionParameter] = input.regions[0];
+    }
+
+    const result = await this.toolCaller({
+      command: this.command,
+      args: this.args,
+      cwd: this.cwd,
+      env: buildChildEnv(this.env),
+      toolName: this.toolName,
+      toolArgs,
+      timeoutMs: this.timeoutMs
+    });
+    const normalized = normalizeMcpSearchResult(result, input, this.maxResults);
+    const failureMessage = normalized.length === 0 ? extractFailureMessage(result) : undefined;
+    if (failureMessage) {
+      warnings.push(failureMessage);
+    }
+    return normalized;
   }
 
   private async enrichWithVisitedPages(
@@ -542,6 +574,28 @@ function buildQuery(input: ContentSearchInput): string {
   ].map((value) => value.trim()).filter(Boolean))]
     .slice(0, 12)
     .join(" ");
+}
+
+function buildPreferredQuery(input: ContentSearchInput, baseQuery: string): string | undefined {
+  const hints = preferredQueryHints(input.sourcePreferences).slice(0, 4);
+  if (hints.length === 0) {
+    return undefined;
+  }
+  return [...new Set([baseQuery, ...hints].map((value) => value.trim()).filter(Boolean))].join(" ");
+}
+
+function uniqueItems(items: ContentItem[]): ContentItem[] {
+  const seen = new Set<string>();
+  const result: ContentItem[] = [];
+  for (const item of items) {
+    const key = item.url?.trim().toLocaleLowerCase() || item.title.trim().toLocaleLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
 }
 
 function pickString(value: Record<string, unknown>, keys: string[]): string | undefined {
