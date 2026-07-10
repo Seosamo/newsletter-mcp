@@ -137,12 +137,18 @@ By default, the server stores profiles, templates, category settings, and newsle
 | `DATABASE_SSL` | Set to `true` or `require` for managed DBs that require TLS; set to `false` for local DBs. |
 | `DATABASE_RUN_MIGRATIONS` | Runs `CREATE TABLE IF NOT EXISTS` migrations on startup. Defaults to `true`. |
 
-Postgres storage keeps lookup keys as columns and stores the domain objects as `jsonb`:
+Postgres storage uses typed relational tables instead of putting whole domain objects in `jsonb`:
 
-- `newsletter_profiles`
-- `newsletter_templates`
-- `newsletter_category_settings`
-- `newsletter_history`
+- `newsletter_profiles`: profile, schedule, and format scalar columns
+- `newsletter_profile_interests`, `newsletter_profile_regions`, `newsletter_profile_excluded_keywords`: searchable one-row-per-value preferences
+- `newsletter_profile_source_preferences`: structured global source preferences
+- `newsletter_category_settings`, `newsletter_category_source_preferences`: category and category-specific source preferences
+- `newsletter_templates`, `newsletter_template_sections`: templates and ordered sections
+- `newsletter_history`: structured request and draft summary columns
+
+Interest/region lookup columns have B-tree indexes. Searchable array columns such as category keywords, source domains, and history interests/regions have GIN indexes.
+
+When `DATABASE_RUN_MIGRATIONS=true`, an existing JSONB-based schema is renamed temporarily, backfilled into the relational tables, and removed only after the backfill succeeds. Take a database snapshot before the first production rollout as usual.
 
 On first startup with an empty Postgres database, the server seeds newsletter templates from the local `data/templates.json` file.
 
@@ -176,6 +182,7 @@ Direct links are normalized into `sourcePreferences` with domains, RSS URLs, and
 | `TICKETMASTER_API_KEY` | Ticketmaster Discovery API 호출 키 |
 | `KMA_API_URL` / `KMA_API_KEY` | 기상청 계열 API 호출 설정 |
 | `OPENAQ_API_KEY` | OpenAQ API 호출 키 |
+| `ENABLE_GITHUB_API_CATALOG` | `true`일 때만 GitHub에서 생성한 `data/apiCatalog.json`을 런타임에 사용. 기본값은 `false`이며 내장 seed API만 사용 |
 | `WEB_SEARCH_PROVIDER` | `all`, `tavily`, `external_mcp`, `noapi_google_search`, `none` 중 선택 |
 | `TAVILY_API_KEY` | Tavily 기반 웹 검색 provider 활성화 |
 | `TAVILY_SEARCH_API_URL` | Tavily 호환 검색 endpoint (기본: `https://api.tavily.com/search`) |
@@ -201,10 +208,10 @@ Direct links are normalized into `sourcePreferences` with domains, RSS URLs, and
 | `ENABLE_EXTERNAL_MCP_SEARCH` / `ENABLE_NOAPI_GOOGLE_SEARCH` | 외부 MCP 검색 provider 강제 등록 |
 | `ENABLE_MOCK_PROVIDERS` | `false`면 mock provider 제외 |
 
-API 카탈로그는 런타임마다 GitHub에서 읽지 않고 `data/apiCatalog.json`을 사용합니다. 갱신이 필요하면 아래 스크립트를 수동으로 실행합니다:
+GitHub 기반 외부 API 카탈로그는 기본적으로 비활성화되어 있습니다. 이 상태에서는 네트워크 요청이나 `data/apiCatalog.json` 사용 없이 내장 seed API만 사용합니다. 나중에 다시 사용할 때만 명시적으로 활성화하고 카탈로그를 갱신합니다:
 
 ```bash
-npm run build:api-catalog
+ENABLE_GITHUB_API_CATALOG=true npm run build:api-catalog
 ```
 
 

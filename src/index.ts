@@ -35,7 +35,13 @@ const authToken = process.env.NEWSLETTER_MCP_AUTH_TOKEN;
 const oauth = buildOAuthOptions();
 
 const storage = await createNewsletterStorage(dataDir);
-const catalogEntries = await new ApiCatalogRepository(path.join(dataDir, "apiCatalog.json")).listEntries();
+const includeGithubApiCatalog = parseBoolean(process.env.ENABLE_GITHUB_API_CATALOG, false);
+const catalogEntries = await new ApiCatalogRepository(path.join(dataDir, "apiCatalog.json"), {
+  includeExternalCatalog: includeGithubApiCatalog
+}).listEntries();
+if (!includeGithubApiCatalog) {
+  console.error("GitHub-derived API catalog is disabled; using built-in API entries only.");
+}
 const providers: ContentProvider[] = [];
 
 const domainProvider = new PublicApiDomainProvider({

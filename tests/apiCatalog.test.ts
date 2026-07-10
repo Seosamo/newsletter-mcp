@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { ApiCatalogRepository } from "../src/catalog/ApiCatalogRepository.js";
 import { ApiCatalogSelector } from "../src/catalog/ApiCatalogSelector.js";
 import { parseApiCatalogMarkdown } from "../src/catalog/apiCatalogParser.js";
 import { recommendSourcePreferences } from "../src/catalog/sourceCatalog.js";
@@ -7,6 +11,39 @@ import { PublicApiDomainProvider } from "../src/providers/PublicApiDomainProvide
 import type { FetchLike } from "../src/providers/HtmlArticleExtractor.js";
 
 describe("API catalog parser and selector", () => {
+  it("uses only built-in entries when the GitHub-derived catalog is disabled", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "newsletter-api-catalog-"));
+    const catalogPath = path.join(directory, "apiCatalog.json");
+    await mkdir(directory, { recursive: true });
+    await writeFile(catalogPath, JSON.stringify({
+      generatedAt: "2026-07-10T00:00:00.000Z",
+      sources: ["https://raw.githubusercontent.com/example/catalog/main/README.md"],
+      entries: [{
+        id: "github-only-entry",
+        name: "GitHub Only Entry",
+        category: "test",
+        description: "Must not be loaded while disabled.",
+        url: "https://example.com",
+        auth: "No",
+        https: "Yes",
+        cors: "Unknown",
+        source: "global",
+        keywords: ["test"]
+      }]
+    }), "utf8");
+
+    try {
+      const entries = await new ApiCatalogRepository(catalogPath, {
+        includeExternalCatalog: false
+      }).listEntries();
+
+      expect(entries.some((entry) => entry.id === "github-only-entry")).toBe(false);
+      expect(entries.some((entry) => entry.source === "seed")).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("parses markdown table entries into catalog records", () => {
     const markdown = [
       "### Events",

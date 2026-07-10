@@ -18,6 +18,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const outputPath = path.join(projectRoot, "data", "apiCatalog.json");
 
+if (process.env.ENABLE_GITHUB_API_CATALOG !== "true") {
+  throw new Error(
+    "GitHub API catalog fetching is disabled. Set ENABLE_GITHUB_API_CATALOG=true to refresh it explicitly."
+  );
+}
+
 const inputs = await Promise.all(SOURCES.map(async (source) => {
   const response = await fetch(source.url);
   if (!response.ok) {

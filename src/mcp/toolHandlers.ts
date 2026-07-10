@@ -12,6 +12,7 @@ import {
   normalizeSourceLinks,
   normalizeSourcePreferences
 } from "../sources/sourcePreferences.js";
+import { parsePreferenceMessage } from "../preferences/preferenceParser.js";
 
 type ToolResult = {
   content: Array<{
@@ -43,17 +44,13 @@ export function listTools() {
       }),
       toolDefinition({
         name: "update_user_preferences",
-        description: `Creates or patches a user's chat-derived newsletter preferences in ${SERVICE_NAME_FIXED}.`,
+        description: `Creates or patches a user's chat-derived newsletter preferences in ${SERVICE_NAME_FIXED}. Always pass the original utterance as sourceMessage. Put extracted topics in patch.interests (for example, "난 미국 주식 뉴스레터를 받고 싶어" becomes ["주식", "미국 주식"]); the server also parses sourceMessage as a fallback.`,
         annotations: writeAnnotation("Update User Preferences"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier. Ignored when OAuth authentication is active.", true),
-          patch: {
-            type: "object",
-            description: "Partial preference update parsed by the LLM client.",
-            additionalProperties: true
-          },
+          patch: profilePatchInputSchema(),
           sourceMessage: stringSchema("Optional original user message.", true)
-        }, ["patch"])
+        }, [])
       }),
       toolDefinition({
         name: "list_newsletter_templates",
@@ -113,7 +110,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "generate_newsletter_draft",
-        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}. During first-time onboarding, ask about preferred sources before calling this tool when no source preferences are saved.`,
+        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}. Explicit preference statements in userMessage are also saved to the user's profile, even if update_user_preferences was not called first. During first-time onboarding, ask about preferred sources before calling this tool when no source preferences are saved.`,
         annotations: openWorldWriteAnnotation("Generate Newsletter Draft"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier. Defaults to default when omitted.", true),
@@ -180,7 +177,7 @@ export async function callTool(
     case "update_user_preferences": {
       const input = updatePreferencesSchema.parse(scopedArgs);
       const existing = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
-      const profile = mergeProfile(existing, input.patch);
+      const profile = mergeProfile(existing, mergeParsedPreferencePatch(input.patch, input.sourceMessage));
       await storage.saveProfile(profile);
       const header = input.sourceMessage ? `_Based on: "${input.sourceMessage}"_\n\n` : "";
       return textResult(`${header}${formatProfile(profile)}`);
@@ -222,7 +219,7 @@ export async function callTool(
     }
     case "generate_newsletter_draft": {
       const input = generateDraftSchema.parse(scopedArgs);
-      const draft = await generator.generate(input);
+      const draft = await generator.generate(await persistPreferencesFromGeneration(storage, input));
       return textResult(formatDraft(draft));
     }
     case "recommend_api_connectors": {
@@ -301,9 +298,6 @@ function formatProfileOnboardingGuidance(profile: UserProfile): string {
   if (profile.interests.length === 0) {
     missing.push("interests");
   }
-  if (profile.regions.length === 0) {
-    missing.push("regions");
-  }
   if (!profile.sourcePreferences || profile.sourcePreferences.length === 0) {
     missing.push("preferred sources");
   }
@@ -329,9 +323,6 @@ function formatProfileOnboardingGuidance(profile: UserProfile): string {
     nextSteps.push("- Call `recommend_api_connectors` with the saved interests to show recommended sources, then ask the user to choose sources or paste site/RSS links.");
     nextSteps.push("- Save selected source links with `update_user_preferences.patch.sourceLinks` or category-specific links with `upsert_user_category_setting.setting.sourceLinks`.");
     nextSteps.push("- If the user says they do not care about sources, proceed with general search.");
-  }
-  if (profile.regions.length === 0) {
-    nextSteps.push("- Region is optional, but ask once if regional relevance matters for the newsletter.");
   }
   if (!profile.formatPreference.edition) {
     nextSteps.push("- Ask which newsletter edition the user prefers: morning, lunch, or evening.");
@@ -747,8 +738,10 @@ const profilePatchSchema = z.object({
 
 const updatePreferencesSchema = z.object({
   userId: z.preprocess(defaultBlankString, z.string().min(1).default(DEFAULT_USER_ID)),
-  patch: profilePatchSchema,
+  patch: profilePatchSchema.default({}),
   sourceMessage: z.string().optional()
+}).refine((input) => Object.keys(input.patch).length > 0 || Boolean(input.sourceMessage?.trim()), {
+  message: "patch or sourceMessage is required"
 });
 
 const categorySettingSchema = z.object({
@@ -841,6 +834,47 @@ function mergeProfile(profile: UserProfile, patch: z.infer<typeof profilePatchSc
   };
 }
 
+function mergeParsedPreferencePatch(
+  patch: z.infer<typeof profilePatchSchema>,
+  sourceMessage: string | undefined
+): z.infer<typeof profilePatchSchema> {
+  const parsed = parsePreferenceMessage(sourceMessage);
+  return {
+    ...patch,
+    interests: patch.interests === undefined
+      ? parsed.interests.length > 0 ? parsed.interests : undefined
+      : patch.interests.length === 0 ? [] : normalizeList([...parsed.interests, ...patch.interests]),
+    regions: patch.regions === undefined
+      ? parsed.regions.length > 0 ? parsed.regions : undefined
+      : patch.regions.length === 0 ? [] : normalizeList([...parsed.regions, ...patch.regions])
+  };
+}
+
+async function persistPreferencesFromGeneration(
+  storage: NewsletterStorage,
+  input: z.infer<typeof generateDraftSchema>
+): Promise<z.infer<typeof generateDraftSchema>> {
+  const parsed = parsePreferenceMessage(input.userMessage);
+  if (parsed.interests.length === 0 && parsed.regions.length === 0) {
+    return input;
+  }
+
+  const existing = (await storage.getProfile(input.userId)) ?? createDefaultProfile(input.userId);
+  const requestInterests = normalizeList([...parsed.interests, ...(input.interests ?? [])]);
+  const requestRegions = normalizeList([...parsed.regions, ...(input.regions ?? [])]);
+  const profile = mergeProfile(existing, {
+    interests: normalizeList([...existing.interests, ...requestInterests]),
+    regions: normalizeList([...existing.regions, ...requestRegions])
+  });
+  await storage.saveProfile(profile);
+
+  return {
+    ...input,
+    interests: input.interests ?? requestInterests,
+    regions: input.regions ?? requestRegions
+  };
+}
+
 function normalizeList(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
@@ -856,6 +890,59 @@ function arrayStringSchema(description: string, _optional = false) {
     type: "array",
     description,
     items: { type: "string" }
+  };
+}
+
+function profilePatchInputSchema() {
+  return {
+    type: "object",
+    description: "Structured preference fields extracted from the user's message. Omitted fields keep their current values.",
+    additionalProperties: false,
+    properties: {
+      interests: arrayStringSchema("Interest tags, ordered from broad to specific. Example: ['주식', '미국 주식'].", true),
+      regions: arrayStringSchema("Preferred geographic regions.", true),
+      preferredTone: {
+        type: "string",
+        enum: ["casual", "professional", "friendly", "analytical"]
+      },
+      schedule: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          frequency: { type: "string", enum: ["daily", "weekly", "monthly"] },
+          timezone: stringSchema("IANA timezone, for example Asia/Seoul.", true),
+          preferredDay: stringSchema("Preferred delivery day.", true),
+          preferredTime: stringSchema("Preferred delivery time.", true)
+        }
+      },
+      excludedKeywords: arrayStringSchema("Keywords to exclude.", true),
+      formatPreference: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          length: { type: "string", enum: ["short", "medium", "long"] },
+          edition: { type: "string", enum: ["morning", "lunch", "evening"] },
+          includeCommentary: { type: "boolean" },
+          includeRecommendations: { type: "boolean" }
+        }
+      },
+      sourcePreferences: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            label: { type: "string" },
+            domains: arrayStringSchema("Preferred source domains.", true),
+            rssUrls: arrayStringSchema("Preferred RSS URLs.", true),
+            queryHints: arrayStringSchema("Search hints.", true),
+            weight: { type: "number" },
+            enabled: { type: "boolean" }
+          }
+        }
+      },
+      sourceLinks: arrayStringSchema("Preferred website or RSS links.", true)
+    }
   };
 }
 

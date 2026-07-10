@@ -59,6 +59,44 @@ describe("chat-based newsletter MCP MVP", () => {
     await expect(storage.listUserCategorySettings(profile.userId)).resolves.toEqual([setting]);
   });
 
+  it("parses and saves interests when only the original preference message is provided", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-07-10T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    await callTool(storage, generator, selector, "update_user_preferences", {
+      userId: "stock-reader",
+      sourceMessage: "난 미국 주식 뉴스레터를 받고 싶어"
+    });
+
+    await expect(storage.getProfile("stock-reader")).resolves.toMatchObject({
+      interests: ["주식", "미국 주식"],
+      regions: ["미국"]
+    });
+  });
+
+  it("persists an explicit preference statement even when the client calls generation directly", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-07-10T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    await callTool(storage, generator, selector, "generate_newsletter_draft", {
+      userId: "direct-generation-reader",
+      userMessage: "난 미국 주식 뉴스레터를 받고 싶어"
+    });
+
+    await expect(storage.getProfile("direct-generation-reader")).resolves.toMatchObject({
+      interests: ["주식", "미국 주식"],
+      regions: ["미국"]
+    });
+  });
+
   it("generates a structured draft with all template sections from chat-derived tags", async () => {
     const storage = await createStorage({
       profiles: [makeProfile("default")],
@@ -258,6 +296,8 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(result.content[0].text).toContain("sourceLinks");
     expect(result.content[0].text).toContain("formatPreference.edition");
     expect(result.content[0].text).toContain("Before generating the first draft");
+    expect(result.content[0].text).not.toContain("Region is optional");
+    expect(result.content[0].text).toContain("Missing or unset preferences: preferred sources, newsletter edition.");
   });
 
   it("passes global and per-interest source preferences into fan-out searches", async () => {
