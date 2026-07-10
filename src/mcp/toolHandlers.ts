@@ -113,7 +113,7 @@ export function listTools() {
       }),
       toolDefinition({
         name: "generate_newsletter_draft",
-        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}.`,
+        description: `Generates a structured newsletter draft from chat-derived preferences using ${SERVICE_NAME_FIXED}. During first-time onboarding, ask about preferred sources before calling this tool when no source preferences are saved.`,
         annotations: openWorldWriteAnnotation("Generate Newsletter Draft"),
         inputSchema: objectSchema({
           userId: stringSchema("User identifier. Defaults to default when omitted.", true),
@@ -287,10 +287,62 @@ function formatProfile(profile: UserProfile): string {
     `- **Regions**: ${profile.regions.join(", ") || "(none)"}`,
     `- **Tone**: ${profile.preferredTone}`,
     `- **Schedule**: ${scheduleStr}`,
-    `- **Format**: ${fmt.length}, commentary: ${fmt.includeCommentary ? "yes" : "no"}, recommendations: ${fmt.includeRecommendations ? "yes" : "no"}`,
+    `- **Format**: ${fmt.length}, edition: ${fmt.edition ?? "(not set)"}, commentary: ${fmt.includeCommentary ? "yes" : "no"}, recommendations: ${fmt.includeRecommendations ? "yes" : "no"}`,
     `- **Excluded Keywords**: ${profile.excludedKeywords.join(", ") || "(none)"}`,
     `- **Source Preferences**: ${formatSourcePreferenceSummary(profile.sourcePreferences)}`,
     `- **Updated**: ${profile.updatedAt}`,
+    "",
+    formatProfileOnboardingGuidance(profile)
+  ].filter(Boolean).join("\n");
+}
+
+function formatProfileOnboardingGuidance(profile: UserProfile): string {
+  const missing: string[] = [];
+  if (profile.interests.length === 0) {
+    missing.push("interests");
+  }
+  if (profile.regions.length === 0) {
+    missing.push("regions");
+  }
+  if (!profile.sourcePreferences || profile.sourcePreferences.length === 0) {
+    missing.push("preferred sources");
+  }
+  if (!profile.formatPreference.edition) {
+    missing.push("newsletter edition");
+  }
+
+  if (missing.length === 0) {
+    return [
+      "## Onboarding Guidance for LLM Client",
+      "",
+      "- Profile is ready for newsletter generation.",
+      "- If the user asks for a draft, call `generate_newsletter_draft` with the current profile defaults."
+    ].join("\n");
+  }
+
+  const nextSteps = [];
+  if (profile.interests.length === 0) {
+    nextSteps.push("- Ask the user which newsletter topics or categories they care about before generating a draft.");
+  }
+  if (profile.interests.length > 0 && (!profile.sourcePreferences || profile.sourcePreferences.length === 0)) {
+    nextSteps.push("- Before generating the first draft, ask whether the user has preferred sources or sites for these topics.");
+    nextSteps.push("- Call `recommend_api_connectors` with the saved interests to show recommended sources, then ask the user to choose sources or paste site/RSS links.");
+    nextSteps.push("- Save selected source links with `update_user_preferences.patch.sourceLinks` or category-specific links with `upsert_user_category_setting.setting.sourceLinks`.");
+    nextSteps.push("- If the user says they do not care about sources, proceed with general search.");
+  }
+  if (profile.regions.length === 0) {
+    nextSteps.push("- Region is optional, but ask once if regional relevance matters for the newsletter.");
+  }
+  if (!profile.formatPreference.edition) {
+    nextSteps.push("- Ask which newsletter edition the user prefers: morning, lunch, or evening.");
+    nextSteps.push("- Save the selected edition with `update_user_preferences.patch.formatPreference.edition` before generating recurring drafts.");
+  }
+
+  return [
+    "## Onboarding Guidance for LLM Client",
+    "",
+    `- Missing or unset preferences: ${missing.join(", ")}.`,
+    ...nextSteps
   ].join("\n");
 }
 
@@ -394,6 +446,8 @@ function formatDraftSection(sectionId: string, items: RankedNewsletterItem[]): s
       indentBlock(item.summary, "   "),
       item.imageUrl ? `   _Representative Image_: ${item.imageUrl}` : "",
       formatSelectedEvidence(item.selectedEvidence ?? []),
+      formatRelatedSources(item.relatedSources ?? []),
+      item.comparisonGroupReason ? `   _Comparison: ${item.comparisonGroupReason}_` : "",
       meta ? `   _${meta}_` : "",
       `   _Reason: ${item.rankingReason}_`
     ]
@@ -411,6 +465,25 @@ function formatSelectedEvidence(evidence: string[]): string {
     .slice(0, 2)
     .map((item) => `   - ${truncateText(item, 700)}`);
   return ["   **Evidence:**", ...lines].join("\n");
+}
+
+function formatRelatedSources(sources: NonNullable<RankedNewsletterItem["relatedSources"]>): string {
+  if (sources.length === 0) {
+    return "";
+  }
+  const lines = sources.slice(0, 4).flatMap((source, index) => {
+    const link = source.sourceUrl ? `[${source.title}](${source.sourceUrl})` : source.title;
+    const meta = [source.sourceName, source.date].filter(Boolean).join(" - ");
+    const evidence = (source.selectedEvidence && source.selectedEvidence.length > 0
+      ? source.selectedEvidence
+      : source.evidence
+    ).slice(0, 1);
+    return [
+      `   ${index + 1}. ${link}${meta ? ` (${meta})` : ""}`,
+      ...evidence.map((item) => `      - ${truncateText(item, 500)}`)
+    ];
+  });
+  return ["   **Related Sources for Comparison:**", ...lines].join("\n");
 }
 
 function indentBlock(text: string, prefix: string): string {
@@ -495,6 +568,8 @@ function formatEditorInstructions(instructions: NewsletterEditorInstructions): s
     `- **Output Format**: ${instructions.outputFormat}`,
     `- **Tone**: ${instructions.tone}`,
     `- **Length**: ${instructions.length}`,
+    instructions.edition ? `- **Edition**: ${instructions.edition}` : "",
+    formatEditionPlan(instructions.editionPlan),
     instructions.audience ? `- **Audience**: ${instructions.audience}` : "",
     formatList("Layout Guide", instructions.layoutGuide),
     formatList("Style Guide", instructions.styleGuide),
@@ -502,6 +577,20 @@ function formatEditorInstructions(instructions: NewsletterEditorInstructions): s
     formatList("Source Policy", instructions.sourcePolicy),
     formatList("Forbidden Rules", instructions.forbiddenRules)
   ].filter(Boolean).join("\n");
+}
+
+function formatEditionPlan(plan: NewsletterEditorInstructions["editionPlan"]): string {
+  if (!plan) {
+    return "";
+  }
+  return [
+    "- **Edition Plan**:",
+    `  - Label: ${plan.label}`,
+    `  - Long topics: ${plan.longTopicCount}`,
+    `  - Multi-source long topics: ${plan.multiSourceTopicCount}`,
+    `  - Short articles: ${plan.shortArticleCount}`,
+    ...plan.instructions.map((instruction) => `  - ${instruction}`)
+  ].join("\n");
 }
 
 function formatApiConnectorRecommendations(
@@ -631,6 +720,7 @@ const schedulePatchSchema = z.object({
 
 const formatPatchSchema = z.object({
   length: z.enum(["short", "medium", "long"]).optional(),
+  edition: z.enum(["morning", "lunch", "evening"]).optional(),
   includeCommentary: z.boolean().optional(),
   includeRecommendations: z.boolean().optional()
 });

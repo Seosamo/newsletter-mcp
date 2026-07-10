@@ -5,6 +5,8 @@ import type {
   GenerateNewsletterDraftInput,
   InterestTagSetting,
   NewsletterDraft,
+  NewsletterEdition,
+  NewsletterEditionPlan,
   NewsletterEditorInstructions,
   NewsletterFormatPreference,
   NewsletterHistoryEntry,
@@ -123,6 +125,7 @@ export class NewsletterDraftGenerator {
         period,
         tone,
         templateId,
+        edition: formatPreference.edition,
         generatedAt
       },
       editorInstructions: buildEditorInstructions(template, tone, formatPreference),
@@ -269,17 +272,270 @@ function mapSections(
   template: NewsletterTemplate,
   formatPreference: NewsletterFormatPreference
 ): Record<NewsletterSectionId, RankedNewsletterItem[]> {
+  const editionPlan = resolveEditionPlan(formatPreference.edition);
+  const shortLimit = editionPlan?.shortArticleCount;
+  const newsItems = ranked.filter((item) => item.type === "news");
+
   return {
-    top_stories: takeBySection(ranked.filter((item) => item.type === "news"), template, "top_stories"),
+    top_stories: takeBySection(newsItems, template, "top_stories", shortLimit),
     key_dates: takeBySection(ranked.filter((item) => item.type === "event"), template, "key_dates"),
     deep_dive: formatPreference.includeCommentary
-      ? takeBySection(ranked.filter((item) => item.type === "news"), template, "deep_dive")
+      ? buildDeepDiveItems(newsItems, template, editionPlan)
       : [],
     recommendations: formatPreference.includeRecommendations
       ? takeBySection(ranked.filter((item) => item.type === "recommendation"), template, "recommendations")
       : []
   };
 }
+
+function buildDeepDiveItems(
+  newsItems: RankedNewsletterItem[],
+  template: NewsletterTemplate,
+  editionPlan: NewsletterEditionPlan | undefined
+): RankedNewsletterItem[] {
+  if (!editionPlan || editionPlan.multiSourceTopicCount === 0) {
+    const limit = editionPlan
+      ? editionPlan.longTopicCount + editionPlan.multiSourceTopicCount
+      : undefined;
+    return takeBySection(newsItems, template, "deep_dive", limit);
+  }
+
+  const multiSourceItems = buildMultiSourceComparisonItems(newsItems, editionPlan.multiSourceTopicCount);
+  const groupedIds = new Set(multiSourceItems.flatMap((item) => [
+    item.id.replace(/::multi_source$/, ""),
+    ...(item.relatedSources ?? []).map((related) => related.id)
+  ]));
+  const standardItems = takeBySection(
+    newsItems.filter((item) => !groupedIds.has(item.id)),
+    template,
+    "deep_dive",
+    editionPlan.longTopicCount
+  );
+  const totalLimit = editionPlan.longTopicCount + editionPlan.multiSourceTopicCount;
+  const combined = [...standardItems, ...multiSourceItems];
+
+  if (combined.length >= totalLimit) {
+    return combined.slice(0, totalLimit);
+  }
+
+  const usedIds = new Set(combined.flatMap((item) => [
+    item.id.replace(/::multi_source$/, ""),
+    ...(item.relatedSources ?? []).map((related) => related.id)
+  ]));
+  const fillers = newsItems
+    .filter((item) => !usedIds.has(item.id))
+    .slice(0, totalLimit - combined.length);
+
+  return [...combined, ...fillers];
+}
+
+type TopicGroup = {
+  items: RankedNewsletterItem[];
+  score: number;
+};
+
+function buildMultiSourceComparisonItems(
+  newsItems: RankedNewsletterItem[],
+  count: number
+): RankedNewsletterItem[] {
+  if (count <= 0) {
+    return [];
+  }
+
+  const tokenCache = new Map<string, Set<string>>();
+  const groups: RankedNewsletterItem[][] = [];
+
+  for (const item of newsItems) {
+    const tokens = topicTokens(item, tokenCache);
+    if (tokens.size < 2) {
+      continue;
+    }
+
+    let bestGroup: RankedNewsletterItem[] | undefined;
+    let bestScore = 0;
+    for (const group of groups) {
+      const groupScore = Math.max(
+        ...group.map((existing) => topicSimilarity(tokens, topicTokens(existing, tokenCache)))
+      );
+      if (groupScore > bestScore) {
+        bestScore = groupScore;
+        bestGroup = group;
+      }
+    }
+
+    if (bestGroup && bestScore >= 0.45) {
+      bestGroup.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+
+  const candidates = groups
+    .map((items): TopicGroup | undefined => {
+      const distinctSources = countDistinctSources(items);
+      if (items.length < 2 || distinctSources < 2) {
+        return undefined;
+      }
+      return {
+        items,
+        score: average(items.map((item) => item.importanceScore)) + distinctSources * 8 + items.length * 2
+      };
+    })
+    .filter((group): group is TopicGroup => Boolean(group))
+    .sort((left, right) => right.score - left.score);
+
+  const usedIds = new Set<string>();
+  const comparisonItems: RankedNewsletterItem[] = [];
+
+  for (const group of candidates) {
+    const available = group.items.filter((item) => !usedIds.has(item.id));
+    const uniqueItems = uniqueItemsBySource(available);
+    if (uniqueItems.length < 2) {
+      continue;
+    }
+
+    const [representative, ...related] = uniqueItems;
+    const relatedSources = related.slice(0, 4).map(toRelatedSourceItem);
+    const sourceCount = countDistinctSources([representative, ...relatedSources]);
+    comparisonItems.push({
+      ...representative,
+      id: `${representative.id}::multi_source`,
+      importanceScore: Math.min(100, representative.importanceScore + Math.min(sourceCount * 2, 8)),
+      rankingReason: appendRankingReason(
+        representative.rankingReason,
+        `multi-source comparison: ${sourceCount} sources`
+      ),
+      relatedSources,
+      comparisonGroupReason: `Grouped same topic across ${sourceCount} distinct sources for the evening edition.`
+    });
+
+    for (const item of uniqueItems) {
+      usedIds.add(item.id);
+    }
+
+    if (comparisonItems.length >= count) {
+      break;
+    }
+  }
+
+  return comparisonItems;
+}
+
+function toRelatedSourceItem(item: RankedNewsletterItem) {
+  return {
+    id: item.id,
+    title: item.title,
+    summary: item.summary,
+    sourceName: item.sourceName,
+    sourceUrl: item.sourceUrl,
+    date: item.date,
+    imageUrl: item.imageUrl,
+    imageAlt: item.imageAlt,
+    importanceScore: item.importanceScore,
+    rankingReason: item.rankingReason,
+    evidence: item.evidence,
+    selectedEvidence: item.selectedEvidence
+  };
+}
+
+function topicTokens(item: RankedNewsletterItem, cache: Map<string, Set<string>>): Set<string> {
+  const cached = cache.get(item.id);
+  if (cached) {
+    return cached;
+  }
+
+  const tokens = new Set(
+    `${item.title} ${item.summary}`
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.map((token) => token.trim())
+      .filter((token) => token.length >= 2 && !TOPIC_STOP_WORDS.has(token)) ?? []
+  );
+  cache.set(item.id, tokens);
+  return tokens;
+}
+
+function topicSimilarity(left: Set<string>, right: Set<string>): number {
+  const intersection = [...left].filter((token) => right.has(token)).length;
+  if (intersection < 2) {
+    return 0;
+  }
+  const smallerSize = Math.max(Math.min(left.size, right.size), 1);
+  const unionSize = Math.max(new Set([...left, ...right]).size, 1);
+  const overlap = intersection / smallerSize;
+  const jaccard = intersection / unionSize;
+  return Math.max(overlap, jaccard);
+}
+
+function uniqueItemsBySource<T extends { sourceName?: string; sourceUrl?: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const item of items) {
+    const key = sourceKey(item);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
+function countDistinctSources(items: Array<{ sourceName?: string; sourceUrl?: string }>): number {
+  return new Set(items.map(sourceKey)).size;
+}
+
+function sourceKey(item: { sourceName?: string; sourceUrl?: string }): string {
+  if (item.sourceUrl) {
+    try {
+      return new URL(item.sourceUrl).hostname.replace(/^www\./, "").toLocaleLowerCase();
+    } catch {
+      // Fall through to source name.
+    }
+  }
+  return (item.sourceName ?? "unknown").trim().toLocaleLowerCase();
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function appendRankingReason(reason: string, addition: string): string {
+  return reason ? `${reason}, ${addition}` : addition;
+}
+
+const TOPIC_STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "from",
+  "with",
+  "this",
+  "that",
+  "into",
+  "over",
+  "about",
+  "after",
+  "before",
+  "news",
+  "update",
+  "analysis",
+  "report",
+  "summary",
+  "item",
+  "said",
+  "says",
+  "will",
+  "are",
+  "was",
+  "were",
+  "has",
+  "have",
+  "had"
+]);
 
 function buildNewsletterOutline(
   title: string,
@@ -343,6 +599,8 @@ function buildEditorInstructions(
     outputFormat: template.outputFormat ?? "markdown",
     tone,
     length: formatPreference.length,
+    edition: formatPreference.edition,
+    editionPlan: resolveEditionPlan(formatPreference.edition),
     audience: template.audience,
     sectionOrder: template.sections.map((section) => section.id),
     layoutGuide: template.layoutGuide ?? template.sections.map((section) => section.title),
@@ -381,17 +639,76 @@ function defaultStyleGuide(formatPreference: NewsletterFormatPreference): string
       : "핵심 맥락을 간결하게 설명한다.";
   return [
     "최종 뉴스레터는 독자가 바로 읽을 수 있는 완성된 문장으로 작성한다.",
-    lengthRule
+    lengthRule,
+    ...editionStyleGuide(formatPreference.edition)
   ];
 }
 
 function takeBySection(
   items: RankedNewsletterItem[],
   template: NewsletterTemplate,
-  sectionId: NewsletterSectionId
+  sectionId: NewsletterSectionId,
+  overrideLimit?: number
 ): RankedNewsletterItem[] {
-  const limit = template.sections.find((section) => section.id === sectionId)?.maxItems ?? 5;
+  const limit = overrideLimit ?? template.sections.find((section) => section.id === sectionId)?.maxItems ?? 5;
   return items.slice(0, limit);
+}
+
+function resolveEditionPlan(edition: NewsletterEdition | undefined): NewsletterEditionPlan | undefined {
+  if (!edition) {
+    return undefined;
+  }
+
+  const plans: Record<NewsletterEdition, NewsletterEditionPlan> = {
+    morning: {
+      label: "아침용",
+      longTopicCount: 1,
+      shortArticleCount: 3,
+      multiSourceTopicCount: 0,
+      instructions: [
+        "장문 top topic 1개를 먼저 배치한다.",
+        "단문 기사는 2~3개만 간결하게 제공한다.",
+        "출근 전 빠르게 읽을 수 있도록 전체 문장을 짧게 유지한다."
+      ]
+    },
+    lunch: {
+      label: "점심용",
+      longTopicCount: 2,
+      shortArticleCount: 5,
+      multiSourceTopicCount: 0,
+      instructions: [
+        "장문 topic 2개를 중심으로 맥락과 의미를 설명한다.",
+        "단문 기사는 최대 5개까지 제공한다.",
+        "점심시간에 훑고 한두 주제를 깊게 읽을 수 있게 구성한다."
+      ]
+    },
+    evening: {
+      label: "저녁용",
+      longTopicCount: 2,
+      shortArticleCount: 5,
+      multiSourceTopicCount: 1,
+      instructions: [
+        "장문 topic 2개를 충분히 설명한다.",
+        "추가 장문 topic 1개는 같은 이슈에 대해 여러 출처의 관점을 비교한다.",
+        "단문 기사는 최대 5개까지 제공한다.",
+        "하루를 정리하는 느낌으로 배경, 파장, 다음 체크포인트를 포함한다."
+      ]
+    }
+  };
+
+  return plans[edition];
+}
+
+function editionStyleGuide(edition: NewsletterEdition | undefined): string[] {
+  const plan = resolveEditionPlan(edition);
+  if (!plan) {
+    return [];
+  }
+  return [
+    `뉴스레터 에디션은 ${plan.label}이다.`,
+    `장문 topic ${plan.longTopicCount + plan.multiSourceTopicCount}개, 단문 기사 최대 ${plan.shortArticleCount}개를 기준으로 편집한다.`,
+    ...plan.instructions
+  ];
 }
 
 function sectionOrder(): NewsletterSectionId[] {

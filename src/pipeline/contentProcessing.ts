@@ -61,20 +61,28 @@ export function rankItems(
 
 export function buildSourceRefs(items: RankedNewsletterItem[]): SourceRef[] {
   const bySource = new Map<string, SourceRef>();
-  for (const item of items) {
-    const sourceName = item.sourceName ?? "Unknown Source";
-    const existing = bySource.get(sourceName);
+  const addSource = (sourceName: string | undefined, sourceUrl: string | undefined, itemId: string) => {
+    const key = sourceName ?? "Unknown Source";
+    const existing = bySource.get(key);
     if (existing) {
-      existing.itemIds.push(item.id);
-      if (!existing.sourceUrl && item.sourceUrl) {
-        existing.sourceUrl = item.sourceUrl;
+      existing.itemIds.push(itemId);
+      if (!existing.sourceUrl && sourceUrl) {
+        existing.sourceUrl = sourceUrl;
       }
-    } else {
-      bySource.set(sourceName, {
-        sourceName,
-        sourceUrl: item.sourceUrl,
-        itemIds: [item.id]
-      });
+      return;
+    }
+
+    bySource.set(key, {
+      sourceName: key,
+      sourceUrl,
+      itemIds: [itemId]
+    });
+  };
+
+  for (const item of items) {
+    addSource(item.sourceName, item.sourceUrl, item.id);
+    for (const related of item.relatedSources ?? []) {
+      addSource(related.sourceName, related.sourceUrl, related.id);
     }
   }
   return [...bySource.values()];

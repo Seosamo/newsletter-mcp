@@ -235,6 +235,31 @@ describe("chat-based newsletter MCP MVP", () => {
     ]);
   });
 
+  it("guides the LLM to ask for preferred sources during first-time onboarding", async () => {
+    const storage = await createStorage({
+      profiles: [],
+      categorySettings: {}
+    });
+    const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-06-22T00:00:00.000Z"));
+    const selector = new ApiCatalogSelector([]);
+
+    const result = await callTool(storage, generator, selector, "update_user_preferences", {
+      userId: "onboarding-user",
+      patch: {
+        interests: ["AI", "technology"]
+      },
+      sourceMessage: "AI and technology newsletter"
+    });
+
+    expect(result.content[0].text).toContain("## Onboarding Guidance for LLM Client");
+    expect(result.content[0].text).toContain("preferred sources");
+    expect(result.content[0].text).toContain("newsletter edition");
+    expect(result.content[0].text).toContain("recommend_api_connectors");
+    expect(result.content[0].text).toContain("sourceLinks");
+    expect(result.content[0].text).toContain("formatPreference.edition");
+    expect(result.content[0].text).toContain("Before generating the first draft");
+  });
+
   it("passes global and per-interest source preferences into fan-out searches", async () => {
     const storage = await createStorage({
       profiles: [
@@ -375,6 +400,181 @@ describe("chat-based newsletter MCP MVP", () => {
 
     expect(draft.sections.top_stories[0].sourceName).toBe("OpenAI Blog");
     expect(draft.sections.top_stories[0].rankingReason).toContain("선호 출처 반영: OpenAI Blog");
+  });
+
+  it("applies the saved newsletter edition to section counts and editor instructions", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("morning-reader", {
+          interests: ["AI"],
+          formatPreference: {
+            length: "medium",
+            edition: "morning",
+            includeCommentary: true,
+            includeRecommendations: false
+          }
+        }),
+        makeProfile("evening-reader", {
+          interests: ["AI"],
+          formatPreference: {
+            length: "long",
+            edition: "evening",
+            includeCommentary: true,
+            includeRecommendations: false
+          }
+        })
+      ],
+      categorySettings: {}
+    });
+    const items = Array.from({ length: 8 }, (_, index) => ({
+      ...makeContentItem(`ai-${index}`, `AI item ${index}`, `https://example.com/ai-${index}`),
+      interestTags: ["AI"],
+      keywords: ["AI"],
+      sourceName: `Source ${index}`,
+      sourceReliability: 0.8
+    }));
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider(items)],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+
+    const morningDraft = await generator.generate({
+      userId: "morning-reader",
+      userMessage: "AI morning newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+    const eveningDraft = await generator.generate({
+      userId: "evening-reader",
+      userMessage: "AI evening newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+
+    expect(morningDraft.metadata.edition).toBe("morning");
+    expect(morningDraft.editorInstructions.editionPlan).toMatchObject({
+      label: "아침용",
+      longTopicCount: 1,
+      shortArticleCount: 3,
+      multiSourceTopicCount: 0
+    });
+    expect(morningDraft.sections.top_stories).toHaveLength(3);
+    expect(morningDraft.sections.deep_dive).toHaveLength(1);
+
+    expect(eveningDraft.metadata.edition).toBe("evening");
+    expect(eveningDraft.editorInstructions.editionPlan).toMatchObject({
+      label: "저녁용",
+      longTopicCount: 2,
+      shortArticleCount: 5,
+      multiSourceTopicCount: 1
+    });
+    expect(eveningDraft.sections.top_stories).toHaveLength(5);
+    expect(eveningDraft.sections.deep_dive).toHaveLength(3);
+  });
+
+  it("adds a multi-source comparison topic for evening deep dive when related coverage exists", async () => {
+    const storage = await createStorage({
+      profiles: [
+        makeProfile("evening-comparison-reader", {
+          interests: ["AI"],
+          formatPreference: {
+            length: "long",
+            edition: "evening",
+            includeCommentary: true,
+            includeRecommendations: false
+          }
+        })
+      ],
+      categorySettings: {}
+    });
+    const items: ContentItem[] = [
+      {
+        ...makeContentItem("gpt5-openai", "OpenAI GPT-5 model launch for developers", "https://openai.com/blog/gpt-5"),
+        summary: "OpenAI GPT-5 model launch adds developer tools and model access.",
+        interestTags: ["AI"],
+        keywords: ["AI", "GPT-5"],
+        sourceName: "OpenAI Blog"
+      },
+      {
+        ...makeContentItem("gpt5-techcrunch", "TechCrunch analyzes OpenAI GPT-5 model launch", "https://techcrunch.com/gpt-5"),
+        summary: "TechCrunch analyzes OpenAI GPT-5 model launch and market reactions.",
+        interestTags: ["AI"],
+        keywords: ["AI", "GPT-5"],
+        sourceName: "TechCrunch"
+      },
+      {
+        ...makeContentItem("gpt5-verge", "The Verge covers GPT-5 model launch reactions", "https://www.theverge.com/gpt-5"),
+        summary: "The Verge covers GPT-5 model launch reactions from developers.",
+        interestTags: ["AI"],
+        keywords: ["AI", "GPT-5"],
+        sourceName: "The Verge"
+      },
+      {
+        ...makeContentItem("ai-chip", "AI chip supply chain update", "https://example.com/ai-chip"),
+        summary: "AI chip supply chain update for cloud infrastructure.",
+        interestTags: ["AI"],
+        keywords: ["AI", "chips"],
+        sourceName: "Example News"
+      },
+      {
+        ...makeContentItem("ai-regulation", "AI regulation hearing scheduled", "https://example.com/ai-regulation"),
+        summary: "AI regulation hearing scheduled with policy experts.",
+        interestTags: ["AI"],
+        keywords: ["AI", "regulation"],
+        sourceName: "Policy News"
+      },
+      {
+        ...makeContentItem("ai-product", "AI product funding brief", "https://example.com/ai-product"),
+        summary: "AI product funding brief for startup teams.",
+        interestTags: ["AI"],
+        keywords: ["AI", "funding"],
+        sourceName: "Startup News"
+      }
+    ];
+    const generator = new NewsletterDraftGenerator(
+      storage,
+      [new StaticProvider(items)],
+      () => new Date("2026-06-22T00:00:00.000Z")
+    );
+    const selector = new ApiCatalogSelector([]);
+
+    const draft = await generator.generate({
+      userId: "evening-comparison-reader",
+      userMessage: "AI evening newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+    const comparisonItem = draft.sections.deep_dive.find((item) => (item.relatedSources ?? []).length > 0);
+
+    expect(comparisonItem).toBeDefined();
+    expect(comparisonItem?.relatedSources?.map((source) => source.sourceName)).toEqual(
+      expect.arrayContaining(["TechCrunch", "The Verge"])
+    );
+    expect(comparisonItem?.rankingReason).toContain("multi-source comparison");
+    expect(comparisonItem?.comparisonGroupReason).toContain("Grouped same topic");
+    expect(draft.sources.map((source) => source.sourceName)).toEqual(
+      expect.arrayContaining(["OpenAI Blog", "TechCrunch", "The Verge"])
+    );
+
+    const toolResult = await callTool(storage, generator, selector, "generate_newsletter_draft", {
+      userId: "evening-comparison-reader",
+      userMessage: "AI evening newsletter",
+      period: {
+        start: "2026-06-15",
+        end: "2026-06-23"
+      }
+    });
+
+    expect(toolResult.content[0].text).toContain("Related Sources for Comparison");
+    expect(toolResult.content[0].text).toContain("TechCrunch");
+    expect(toolResult.content[0].text).toContain("The Verge");
   });
 
   it("filters excluded keywords and deduplicates equivalent URLs", async () => {

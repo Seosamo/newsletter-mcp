@@ -4,10 +4,13 @@ export type NewsletterFrequency = "daily" | "weekly" | "monthly";
 
 export type NewsletterLength = "short" | "medium" | "long";
 
+export type NewsletterEdition = "morning" | "lunch" | "evening";
+
 export type NewsletterFormatPreference = {
   length: NewsletterLength;
   includeCommentary: boolean;
   includeRecommendations: boolean;
+  edition?: NewsletterEdition;
 };
 
 export type SourcePreference = {
@@ -81,6 +84,8 @@ export type NewsletterEditorInstructions = {
   outputFormat: string;
   tone: NewsletterTone;
   length: NewsletterLength;
+  edition?: NewsletterEdition;
+  editionPlan?: NewsletterEditionPlan;
   audience?: string;
   sectionOrder: NewsletterSectionId[];
   layoutGuide: string[];
@@ -88,6 +93,14 @@ export type NewsletterEditorInstructions = {
   sectionInstructions: Partial<Record<NewsletterSectionId, string>>;
   sourcePolicy: string[];
   forbiddenRules: string[];
+};
+
+export type NewsletterEditionPlan = {
+  label: string;
+  longTopicCount: number;
+  shortArticleCount: number;
+  multiSourceTopicCount: number;
+  instructions: string[];
 };
 
 export type NewsletterOutlineGroup = {
@@ -160,6 +173,21 @@ export type GenerateNewsletterDraftInput = {
   templateId?: string;
 };
 
+export type NewsletterRelatedSourceItem = {
+  id: string;
+  title: string;
+  summary: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  date?: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  importanceScore: number;
+  rankingReason: string;
+  evidence: string[];
+  selectedEvidence?: string[];
+};
+
 export type RankedNewsletterItem = {
   id: string;
   title: string;
@@ -176,6 +204,8 @@ export type RankedNewsletterItem = {
   rankingReason: string;
   evidence: string[];
   selectedEvidence?: string[];
+  relatedSources?: NewsletterRelatedSourceItem[];
+  comparisonGroupReason?: string;
 };
 
 export type NewsletterDraft = {
@@ -189,6 +219,7 @@ export type NewsletterDraft = {
     period: Period;
     tone: NewsletterTone;
     templateId: string;
+    edition?: NewsletterEdition;
     generatedAt: string;
   };
   editorInstructions: NewsletterEditorInstructions;
