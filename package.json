@@ -9,6 +9,7 @@
     "start": "node dist/src/index.js",
     "build": "tsc -p tsconfig.json",
     "build:api-catalog": "tsx scripts/build-api-catalog.ts",
+    "print:tools": "tsx scripts/print-tools.ts",
     "test": "vitest run",
     "test:search-comparison": "vitest run tests/searchProviderComparison.test.ts --reporter verbose",
     "inspect": "npx @modelcontextprotocol/inspector"

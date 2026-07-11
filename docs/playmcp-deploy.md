@@ -15,6 +15,14 @@
 7. MCP 서버 상세 페이지에서 엔드포인트 URL을 복사합니다.
 8. https://playmcp.kakao.com/console 에서 엔드포인트 URL을 등록합니다.
 
+OAuth가 활성화된 서버는 등록 단계의 익명 `tools/list` 요청을 `401`로 차단할 수 있습니다. PlayMCP가 `listTools` 응답을 수동 입력하라고 표시하면 프로젝트 루트에서 다음 명령을 실행하고 출력된 JSON 전체를 붙여 넣습니다.
+
+```bash
+npm run --silent print:tools
+```
+
+입력 칸에는 `&quot;`가 아니라 일반 JSON 큰따옴표(`"`)를 사용합니다. 출력의 최상위 `{ "tools": [...] }` 구조를 그대로 입력해야 합니다.
+
 ## Git 소스 빌드 입력값
 
 PlayMCP 포털에는 아래와 같이 입력하면 됩니다.
