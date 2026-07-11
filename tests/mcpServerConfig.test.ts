@@ -64,6 +64,16 @@ describe("MCP server production configuration", () => {
       scopes_supported: ["newsletter:read"]
     });
 
+    const healthResponse = await fetch(`${serverUrl(server)}/health`);
+    const health = await healthResponse.json() as Record<string, unknown>;
+    expect(health).toMatchObject({
+      authentication: {
+        mode: "oauth",
+        resource: "https://newsletter.example.test/mcp",
+        userIdClaim: "sub"
+      }
+    });
+
     await closeServer(server);
   });
 });

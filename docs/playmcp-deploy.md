@@ -41,8 +41,30 @@ Docker 이미지는 PlayMCP 배포에 맞춰 아래 기본값을 설정합니다
 | `PORT` | `3000` |
 | `MCP_ENDPOINT_PATH` | `/mcp` |
 | `NEWSLETTER_MCP_DATA_DIR` | `/app/data` |
+| `PUBLIC_BASE_URL` | `https://migration.playmcp-endpoint.kakaocloud.io` |
+| `OAUTH_ENABLED` | `true` |
 
-PlayMCP는 배포 후 최종 엔드포인트 URL을 제공하므로 `PUBLIC_BASE_URL`은 선택값입니다. 프로덕션에서 직접 `PUBLIC_BASE_URL`을 설정한다면 HTTPS URL을 사용해야 합니다.
+현재 배포의 실제 MCP 엔드포인트는 `https://migration.playmcp-endpoint.kakaocloud.io/mcp`입니다. OAuth의 Auth0 API Identifier는 `https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp`이므로 실제 접속 주소와 다르며, 아래처럼 각각 구분해서 설정합니다.
+
+## Auth0 사용자 식별 설정
+
+이 배포는 Auth0가 발급한 RS256 access token을 검증하고 `sub` claim을 DB의 `user_id`로 사용합니다. 아래 값들은 공개 OAuth 메타데이터이며 비밀값이 아닙니다.
+
+```env
+PUBLIC_BASE_URL=https://migration.playmcp-endpoint.kakaocloud.io
+OAUTH_ENABLED=true
+OAUTH_ISSUER=https://dev-ekikfczn12akgdal.us.auth0.com/
+OAUTH_AUTHORIZATION_SERVERS=https://dev-ekikfczn12akgdal.us.auth0.com/
+OAUTH_JWKS_URL=https://dev-ekikfczn12akgdal.us.auth0.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
+OAUTH_RESOURCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
+OAUTH_RESOURCE_METADATA_URL=https://migration.playmcp-endpoint.kakaocloud.io/.well-known/oauth-protected-resource/mcp
+OAUTH_USER_ID_CLAIM=sub
+OAUTH_ALLOWED_ALGORITHMS=RS256
+OAUTH_SCOPES_SUPPORTED=openid,profile
+```
+
+OAuth가 활성화되면 인증되지 않은 MCP 요청은 도구 실행 전에 `401 Unauthorized`로 차단됩니다. 도구 인자로 들어온 `userId`는 신뢰하지 않고 검증된 access token의 `sub`로 덮어쓰기 때문에 여러 사용자가 `default` 프로필을 공유하지 않습니다.
 
 ## 선택 환경 변수와 시크릿
 
@@ -53,6 +75,9 @@ PlayMCP는 배포 후 최종 엔드포인트 URL을 제공하므로 `PUBLIC_BASE
 | 환경 변수 | 용도 |
 | --- | --- |
 | `NEWSLETTER_MCP_AUTH_TOKEN` | `Authorization: Bearer <token>` 또는 `X-MCP-Auth: <token>` 인증 활성화 |
+| `OAUTH_AUDIENCE` | Auth0 API Identifier. 현재 값: `https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp` |
+| `OAUTH_RESOURCE` | OAuth canonical resource. 현재 Auth0 API Identifier와 동일하게 설정 |
+| `OAUTH_USER_ID_CLAIM` | 사용자별 DB 키로 사용할 JWT claim. 현재 `sub` |
 | `BRAVE_SEARCH_API_KEY` | Brave Search 기반 웹 검색 활성화 |
 | `TOUR_API_KEY` | TourAPI 커넥터 활성화 |
 | `EVENTBRITE_TOKEN` | Eventbrite 커넥터 활성화 |

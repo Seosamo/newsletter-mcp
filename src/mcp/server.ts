@@ -50,6 +50,15 @@ export async function startMcpServer(
       status: "ok",
       name: "chat-newsletter-mcp",
       transport: "streamable-http",
+      authentication: options.oauth?.enabled
+        ? {
+            mode: "oauth",
+            resource: options.oauth.resource,
+            userIdClaim: options.oauth.userIdClaim
+          }
+        : options.authToken
+          ? { mode: "shared-token" }
+          : { mode: "none" },
       endpoint: options.publicBaseUrl
         ? `${options.publicBaseUrl.replace(/\/+$/, "")}${options.endpointPath}`
         : options.endpointPath

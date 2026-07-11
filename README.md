@@ -125,6 +125,17 @@ The server exposes protected resource metadata at:
 /.well-known/oauth-protected-resource/mcp
 ```
 
+For the current PlayMCP/Auth0 deployment, the public endpoint and Auth0 API Identifier are different. The Docker image uses the following mapping:
+
+```env
+PUBLIC_BASE_URL=https://migration.playmcp-endpoint.kakaocloud.io
+OAUTH_AUDIENCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
+OAUTH_RESOURCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
+OAUTH_USER_ID_CLAIM=sub
+```
+
+Authenticated user-scoped tools always replace a client-supplied or omitted `userId` with the verified JWT `sub` claim.
+
 ### Storage
 
 By default, the server stores profiles, templates, category settings, and newsletter history in JSON files under `data/`. Set `DATABASE_URL` to switch to Postgres-compatible external storage such as Neon, Supabase, RDS, or local PostgreSQL.
