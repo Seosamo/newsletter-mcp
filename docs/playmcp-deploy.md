@@ -52,7 +52,7 @@ Docker 이미지는 PlayMCP 배포에 맞춰 아래 기본값을 설정합니다
 | `PUBLIC_BASE_URL` | `https://migration.playmcp-endpoint.kakaocloud.io` |
 | `OAUTH_ENABLED` | `true` |
 
-현재 배포의 실제 MCP 엔드포인트는 `https://migration.playmcp-endpoint.kakaocloud.io/mcp`입니다. OAuth의 Auth0 API Identifier는 `https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp`이므로 실제 접속 주소와 다르며, 아래처럼 각각 구분해서 설정합니다.
+현재 배포의 실제 MCP 엔드포인트와 OAuth의 Auth0 API Identifier는 모두 `PUBLIC_BASE_URL`과 `MCP_ENDPOINT_PATH`에서 자동 생성됩니다.
 
 ## Auth0 사용자 식별 설정
 
@@ -64,9 +64,6 @@ OAUTH_ENABLED=true
 OAUTH_ISSUER=https://dev-ekikfczn12akgdal.us.auth0.com/
 OAUTH_AUTHORIZATION_SERVERS=https://dev-ekikfczn12akgdal.us.auth0.com/
 OAUTH_JWKS_URL=https://dev-ekikfczn12akgdal.us.auth0.com/.well-known/jwks.json
-OAUTH_AUDIENCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
-OAUTH_RESOURCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
-OAUTH_RESOURCE_METADATA_URL=https://migration.playmcp-endpoint.kakaocloud.io/.well-known/oauth-protected-resource/mcp
 OAUTH_USER_ID_CLAIM=sub
 OAUTH_ALLOWED_ALGORITHMS=RS256
 OAUTH_SCOPES_SUPPORTED=openid,profile
@@ -83,8 +80,8 @@ OAuth가 활성화되면 인증되지 않은 MCP 요청은 도구 실행 전에 
 | 환경 변수 | 용도 |
 | --- | --- |
 | `NEWSLETTER_MCP_AUTH_TOKEN` | `Authorization: Bearer <token>` 또는 `X-MCP-Auth: <token>` 인증 활성화 |
-| `OAUTH_AUDIENCE` | Auth0 API Identifier. 현재 값: `https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp` |
-| `OAUTH_RESOURCE` | OAuth canonical resource. 현재 Auth0 API Identifier와 동일하게 설정 |
+| `OAUTH_AUDIENCE` | 필요할 때만 `PUBLIC_BASE_URL`에서 자동 생성된 audience를 덮어쓰는 호환용 override |
+| `OAUTH_RESOURCE` | 필요할 때만 자동 생성값을 덮어쓰는 호환용 override |
 | `OAUTH_USER_ID_CLAIM` | 사용자별 DB 키로 사용할 JWT claim. 현재 `sub` |
 | `BRAVE_SEARCH_API_KEY` | Brave Search 기반 웹 검색 활성화 |
 | `TOUR_API_KEY` | TourAPI 커넥터 활성화 |

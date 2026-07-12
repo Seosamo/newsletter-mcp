@@ -129,10 +129,12 @@ For the current PlayMCP/Auth0 deployment, the public endpoint and Auth0 API Iden
 
 ```env
 PUBLIC_BASE_URL=https://migration.playmcp-endpoint.kakaocloud.io
-OAUTH_AUDIENCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
-OAUTH_RESOURCE=https://tikitaka.playmcp-endpoint.kakaocloud.io/mcp
 OAUTH_USER_ID_CLAIM=sub
 ```
+
+With `MCP_ENDPOINT_PATH=/mcp`, this base URL automatically produces the public MCP endpoint
+and OAuth resource/audience `https://migration.playmcp-endpoint.kakaocloud.io/mcp`, plus the protected-resource metadata URL
+`https://migration.playmcp-endpoint.kakaocloud.io/.well-known/oauth-protected-resource/mcp`.
 
 Authenticated user-scoped tools always replace a client-supplied or omitted `userId` with the verified JWT `sub` claim.
 

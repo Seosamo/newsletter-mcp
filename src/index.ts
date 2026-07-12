@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { ApiCatalogRepository } from "./catalog/ApiCatalogRepository.js";
 import { ApiCatalogSelector } from "./catalog/ApiCatalogSelector.js";
 import { loadEnvFile } from "./config/loadEnv.js";
+import { resolveOAuthUrls } from "./config/oauthUrls.js";
 import {
   MockEventProvider,
   MockNewsProvider,
@@ -227,8 +228,14 @@ function buildOAuthOptions(): OAuthOptions {
     process.env.OAUTH_ENABLED,
     Boolean(firstEnv("OAUTH_JWKS_URL", "OAUTH_ISSUER"))
   );
-  const serverBaseUrl = publicBaseUrl?.replace(/\/+$/, "") ?? `http://${host}:${port}`;
-  const resource = firstEnv("OAUTH_RESOURCE") ?? `${serverBaseUrl}${endpointPath}`;
+  const serverBaseUrl = publicBaseUrl ?? `http://${host}:${port}`;
+  const urls = resolveOAuthUrls({
+    serverBaseUrl,
+    endpointPath,
+    resource: firstEnv("OAUTH_RESOURCE"),
+    audience: firstEnv("OAUTH_AUDIENCE"),
+    resourceMetadataUrl: firstEnv("OAUTH_RESOURCE_METADATA_URL")
+  });
   const issuer = firstEnv("OAUTH_ISSUER");
   const authorizationServers = parseCsv(process.env.OAUTH_AUTHORIZATION_SERVERS);
   const requiredScopes = parseScopeList(process.env.OAUTH_REQUIRED_SCOPES);
@@ -237,16 +244,15 @@ function buildOAuthOptions(): OAuthOptions {
   return {
     enabled,
     issuer,
-    audience: firstEnv("OAUTH_AUDIENCE") ?? resource,
+    audience: urls.audience,
     jwksUrl: firstEnv("OAUTH_JWKS_URL"),
     authorizationServers: authorizationServers.length > 0
       ? authorizationServers
       : issuer
         ? [issuer]
         : [],
-    resource,
-    resourceMetadataUrl: firstEnv("OAUTH_RESOURCE_METADATA_URL") ??
-      `${serverBaseUrl}/.well-known/oauth-protected-resource${endpointPath === "/" ? "" : endpointPath}`,
+    resource: urls.resource,
+    resourceMetadataUrl: urls.resourceMetadataUrl,
     scopesSupported: scopesSupported.length > 0 ? scopesSupported : requiredScopes,
     requiredScopes,
     userIdClaim: firstEnv("OAUTH_USER_ID_CLAIM") ?? "sub",
