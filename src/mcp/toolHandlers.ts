@@ -226,7 +226,7 @@ export async function callTool(
       const input = recommendApiConnectorsSchema.parse(scopedArgs);
       return textResult(formatApiConnectorRecommendations(
         input.userId,
-        apiCatalogSelector.select(input, 8),
+        apiCatalogSelector.select(input, 8).filter((recommendation) => recommendation.callable),
         recommendSourcePreferences(input, 8)
       ));
     }
@@ -590,25 +590,16 @@ function formatApiConnectorRecommendations(
   sourceRecommendations: SourceRecommendation[]
 ): string {
   const apiBody = recommendations.length === 0
-    ? "_No relevant public API candidates were found._"
+    ? "_No configured public API connectors are currently enabled._"
     : recommendations.map((recommendation, index) => {
     const { entry } = recommendation;
-    const status = recommendation.callable
-      ? "callable"
-      : recommendation.supported
-        ? "supported, needs configuration"
-        : "candidate only";
-    const requiredConfig = recommendation.requiresConfig.length > 0
-      ? recommendation.requiresConfig.join(", ")
-      : "none";
 
     return [
       `${index + 1}. **[${entry.name}](${entry.url})**`,
       `   - Category: ${entry.category}`,
       `   - Catalog source: ${entry.source}`,
       `   - Auth: ${entry.auth} | HTTPS: ${entry.https} | CORS: ${entry.cors}`,
-      `   - Status: ${status}`,
-      `   - Required config: ${requiredConfig}`,
+      "   - Status: callable",
       `   - Score: ${recommendation.score}`,
       `   - Reason: ${recommendation.reasons.join("; ") || "catalog match"}`
     ].join("\n");

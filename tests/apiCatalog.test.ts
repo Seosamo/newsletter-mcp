@@ -170,7 +170,7 @@ describe("PublicApiDomainProvider", () => {
     });
 
     expect(result.items).toEqual([]);
-    expect(result.warnings[0]).toContain("EVENTBRITE_TOKEN");
+    expect(result.warnings).toEqual([]);
   });
 });
 

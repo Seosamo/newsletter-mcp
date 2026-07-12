@@ -51,6 +51,7 @@ Docker 이미지는 PlayMCP 배포에 맞춰 아래 기본값을 설정합니다
 | `NEWSLETTER_MCP_DATA_DIR` | `/app/data` |
 | `PUBLIC_BASE_URL` | `https://migration.playmcp-endpoint.kakaocloud.io` |
 | `OAUTH_ENABLED` | `true` |
+| `ENABLE_DOMAIN_CONNECTORS` | `false` (API 키가 필요한 public API 커넥터 비활성화) |
 
 현재 배포의 실제 MCP 엔드포인트와 OAuth의 Auth0 API Identifier는 모두 `PUBLIC_BASE_URL`과 `MCP_ENDPOINT_PATH`에서 자동 생성됩니다.
 

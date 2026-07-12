@@ -826,7 +826,21 @@ describe("chat-based newsletter MCP MVP", () => {
       categorySettings: {}
     });
     const generator = new NewsletterDraftGenerator(storage, [], () => new Date("2026-06-22T00:00:00.000Z"));
-    const selector = new ApiCatalogSelector([]);
+    const selector = new ApiCatalogSelector([{
+      id: "eventbrite-unconfigured",
+      name: "Eventbrite",
+      category: "events",
+      description: "Event discovery API.",
+      url: "https://www.eventbrite.com/platform/api/",
+      auth: "OAuth",
+      https: "Yes",
+      cors: "Unknown",
+      source: "seed",
+      keywords: ["event", "technology"],
+      connectorId: "eventbrite"
+    }], {
+      eventbrite: ["EVENTBRITE_TOKEN"]
+    });
 
     const result = await callTool(storage, generator, selector, "recommend_api_connectors", {
       userId: "default",
@@ -839,6 +853,8 @@ describe("chat-based newsletter MCP MVP", () => {
     expect(result.content[0].text).toContain("OpenAI Blog");
     expect(result.content[0].text).toContain("TechCrunch");
     expect(result.content[0].text).toContain("arXiv");
+    expect(result.content[0].text).not.toContain("EVENTBRITE_TOKEN");
+    expect(result.content[0].text).not.toContain("needs configuration");
   });
 
   it("uses custom template rules in AI editing instructions for generated drafts", async () => {

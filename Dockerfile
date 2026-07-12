@@ -23,6 +23,7 @@ ENV NODE_ENV=production \
     OAUTH_ALLOWED_ALGORITHMS=RS256 \
     OAUTH_SCOPES_SUPPORTED=openid,profile \
     NEWSLETTER_MCP_DATA_DIR=/app/data \
+    ENABLE_DOMAIN_CONNECTORS=false \
     WEB_SEARCH_PROVIDER=noapi_google_search \
     NOAPI_GOOGLE_SEARCH_COMMAND=noapi-google-search-mcp \
     ENABLE_MOCK_PROVIDERS=false \

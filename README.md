@@ -187,7 +187,7 @@ Direct links are normalized into `sourcePreferences` with domains, RSS URLs, and
 
 | 변수 | 설명 |
 |---|---|
-| `ENABLE_DOMAIN_CONNECTORS` | `false`면 public API 기반 도메인 커넥터 비활성화 |
+| `ENABLE_DOMAIN_CONNECTORS` | `false`면 public API 기반 도메인 커넥터 비활성화. 배포 기본값은 `false` |
 | `DOMAIN_CONNECTOR_MAX_CONNECTORS` | draft 생성 시 시도할 도메인 커넥터 수 |
 | `TOUR_API_KEY` | 한국관광공사 TourAPI 호출 키 |
 | `CULTURE_INFO_API_URL` / `CULTURE_INFO_API_KEY` | 문화정보 계열 API 호출 설정 |

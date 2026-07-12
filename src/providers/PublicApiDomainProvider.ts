@@ -58,7 +58,7 @@ export class PublicApiDomainProvider implements ContentProvider {
         keywords: input.keywords,
         period: input.period
       }, 10)
-      .filter((recommendation) => recommendation.supported);
+      .filter((recommendation) => recommendation.callable);
 
     const warnings: string[] = [];
     const items: ContentItem[] = [];
@@ -71,11 +71,6 @@ export class PublicApiDomainProvider implements ContentProvider {
 
       const adapter = this.adapters.get(connectorId);
       if (!adapter) {
-        continue;
-      }
-
-      if (!adapter.isConfigured()) {
-        warnings.push(`${adapter.label} skipped; missing configuration: ${adapter.requiredEnv.join(", ")}`);
         continue;
       }
 
